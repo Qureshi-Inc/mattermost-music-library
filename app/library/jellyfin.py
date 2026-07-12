@@ -182,39 +182,58 @@ class JellyfinClient:
     async def search_track(self, title: str, artist: str) -> str | None:
         """Search for a track in Jellyfin by title and artist.
 
+        Tries multiple search strategies: full query, title only, simplified title.
         Returns the item ID if found, None otherwise.
         """
+        import re
+
+        # Clean the title for searching
+        clean_title = re.sub(r'\s*[\(\[].*?[\)\]]', '', title).strip()  # Remove parentheticals
+        clean_title = re.sub(r'\s*-\s*$', '', clean_title).strip()
+
+        # Try multiple search queries in order of specificity
+        queries = []
+        if clean_title and artist:
+            queries.append(f"{clean_title} {artist}")
+        if clean_title:
+            queries.append(clean_title)
+        if title != clean_title:
+            queries.append(title)
+
         session = await self._get_session()
-        try:
-            params = {
-                "searchTerm": f"{title} {artist}",
-                "IncludeItemTypes": "Audio",
-                "Recursive": "true",
-                "Limit": "5",
-            }
-            async with session.get(
-                f"{self.base_url}/Items", headers=self._headers, params=params
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
+        for query in queries:
+            try:
+                params = {
+                    "searchTerm": query,
+                    "IncludeItemTypes": "Audio",
+                    "Recursive": "true",
+                    "Limit": "5",
+                }
+                async with session.get(
+                    f"{self.base_url}/Items", headers=self._headers, params=params
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
 
-            items = data.get("Items", [])
-            if not items:
-                return None
+                items = data.get("Items", [])
+                if not items:
+                    continue
 
-            # Find best match
-            norm_title = title.lower().strip()
-            for item in items:
-                item_name = (item.get("Name") or "").lower()
-                if norm_title in item_name or item_name in norm_title:
-                    return item.get("Id")
+                # Find best match
+                norm_title = clean_title.lower() if clean_title else title.lower()
+                for item in items:
+                    item_name = (item.get("Name") or "").lower()
+                    if norm_title in item_name or item_name in norm_title:
+                        return item.get("Id")
 
-            # Fall back to first result
-            return items[0].get("Id")
-        except Exception as e:
-            logger.warning("Jellyfin search failed: %s", e)
-            return None
+                # Accept first result if query was specific enough
+                if len(query.split()) >= 2:
+                    return items[0].get("Id")
+            except Exception as e:
+                logger.warning("Jellyfin search failed for query '%s': %s", query, e)
+
+        return None
 
     async def get_or_create_playlist(self, playlist_name: str, user_id: str) -> str | None:
         """Get an existing playlist by name or create a new one.
