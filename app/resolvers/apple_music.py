@@ -66,8 +66,8 @@ class AppleMusicResolver(BaseResolver):
         logger.info("Resolving Apple Music track: %s (storefront=%s)", track_id, storefront)
 
         if not self._token:
-            logger.warning("Apple Music developer token not configured")
-            return TrackMetadata(provider="apple_music", provider_id=track_id)
+            logger.info("Apple Music developer token not configured, using iTunes lookup")
+            return await self._itunes_lookup(track_id, storefront)
 
         session = await self._get_session()
         try:
@@ -122,6 +122,52 @@ class AppleMusicResolver(BaseResolver):
                 "disc_number": attributes.get("discNumber"),
                 "track_number": attributes.get("trackNumber"),
                 "content_rating": attributes.get("contentRating"),
+            },
+        )
+
+    async def _itunes_lookup(self, track_id: str, storefront: str) -> TrackMetadata:
+        """Fall back to the free iTunes Lookup API (no auth required)."""
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"https://itunes.apple.com/lookup?id={track_id}&country={storefront}",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning("iTunes lookup returned %d for track %s", resp.status, track_id)
+                    return TrackMetadata(provider="apple_music", provider_id=track_id)
+                data = await resp.json()
+        except Exception as exc:
+            logger.error("iTunes lookup failed: %s", exc)
+            return TrackMetadata(provider="apple_music", provider_id=track_id)
+
+        results = data.get("results", [])
+        if not results:
+            logger.warning("iTunes lookup returned no results for track %s", track_id)
+            return TrackMetadata(provider="apple_music", provider_id=track_id)
+
+        track = results[0]
+        title = track.get("trackName")
+        artist = track.get("artistName")
+        album = track.get("collectionName")
+        duration_ms = track.get("trackTimeMillis")
+        duration_seconds = duration_ms / 1000.0 if duration_ms else None
+
+        logger.info("iTunes lookup resolved: %s - %s", artist, title)
+
+        return TrackMetadata(
+            title=title,
+            artist=artist,
+            album=album,
+            duration_seconds=duration_seconds,
+            provider_id=track_id,
+            provider="apple_music",
+            extra={
+                "genre": track.get("primaryGenreName"),
+                "release_date": track.get("releaseDate"),
+                "artwork_url": track.get("artworkUrl100"),
+                "track_number": track.get("trackNumber"),
+                "disc_number": track.get("discNumber"),
             },
         )
 

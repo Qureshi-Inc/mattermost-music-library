@@ -249,11 +249,14 @@ class JobPipeline:
         )
 
         try:
+            import asyncio
             from app.matching import YouTubeSearcher
 
             searcher = YouTubeSearcher()
-            query = self._build_search_query(metadata)
-            candidates = await searcher.search(query, metadata)  # type: ignore[misc, arg-type]
+            title = metadata.get("title") or "unknown"
+            artist = metadata.get("artist") or "unknown"
+            candidates_result = await asyncio.to_thread(searcher.search, artist, title)
+            candidates = candidates_result.candidates if candidates_result else []
 
             if not candidates:
                 await self.queue.mark_failed(job.id, "No YouTube candidates found")
