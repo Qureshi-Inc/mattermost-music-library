@@ -4,15 +4,20 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
+
 from mutagen.id3 import (
+    APIC,
     ID3,
     TALB,
     TCON,
     TDRC,
     TIT2,
     TPE1,
+    TPE2,
     TRCK,
     TSRC,
+    TXXX,
     ID3NoHeaderError,
 )
 from mutagen.mp3 import MP3
@@ -27,11 +32,16 @@ class TagData:
     title: str | None = None
     artist: str | None = None
     album: str | None = None
+    album_artist: str | None = None
     track_number: int | None = None
     total_tracks: int | None = None
+    disc_number: int | None = None
     year: str | None = None
     genre: str | None = None
     isrc: str | None = None
+    artwork_url: str | None = None
+    source_url: str | None = None
+    youtube_id: str | None = None
 
 
 class AudioTagger:
@@ -103,6 +113,31 @@ class AudioTagger:
         if tags.isrc:
             id3.add(TSRC(encoding=self.ENCODING_UTF8, text=[tags.isrc]))
 
+        if tags.album_artist:
+            id3.add(TPE2(encoding=self.ENCODING_UTF8, text=[tags.album_artist]))
+
+        if tags.disc_number is not None:
+            id3.add(TXXX(encoding=self.ENCODING_UTF8, desc="DISCNUMBER", text=[str(tags.disc_number)]))
+
+        if tags.source_url:
+            id3.add(TXXX(encoding=self.ENCODING_UTF8, desc="SOURCE_URL", text=[tags.source_url]))
+
+        if tags.youtube_id:
+            id3.add(TXXX(encoding=self.ENCODING_UTF8, desc="YOUTUBE_ID", text=[tags.youtube_id]))
+
+        # Download and embed artwork
+        if tags.artwork_url:
+            artwork_data = self._download_artwork(tags.artwork_url)
+            if artwork_data:
+                id3.add(APIC(
+                    encoding=0,
+                    mime="image/jpeg",
+                    type=3,  # Cover (front)
+                    desc="Cover",
+                    data=artwork_data,
+                ))
+                logger.info("Embedded artwork from %s", tags.artwork_url[:80])
+
         # Save with ID3v2.4
         id3.save(str(path), v2_version=4)
 
@@ -164,6 +199,21 @@ class AudioTagger:
             genre=self._get_text(id3, "TCON"),
             isrc=self._get_text(id3, "TSRC"),
         )
+
+    @staticmethod
+    def _download_artwork(url: str) -> bytes | None:
+        """Download artwork image from URL."""
+        try:
+            # Upscale iTunes artwork to 600x600
+            if "itunes.apple.com" in url or "mzstatic.com" in url:
+                url = url.replace("100x100", "600x600").replace("60x60", "600x600")
+            with httpx.Client(timeout=10) as client:
+                resp = client.get(url)
+                if resp.status_code == 200 and len(resp.content) > 100:
+                    return resp.content
+        except Exception as e:
+            logger.warning("Failed to download artwork: %s", e)
+        return None
 
     @staticmethod
     def _get_text(id3: ID3, frame_id: str) -> str | None:

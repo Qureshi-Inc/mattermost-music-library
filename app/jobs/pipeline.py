@@ -236,6 +236,7 @@ class JobPipeline:
                 "album": track_metadata.album,
                 "duration_seconds": track_metadata.duration_seconds,
                 "isrc": track_metadata.isrc,
+                "extra": getattr(track_metadata, "extra", None) or {},
             }
 
         except Exception as e:
@@ -464,11 +465,19 @@ class JobPipeline:
         await self._post_status(job, "Tagging file...")
 
         try:
+            extra = metadata.get("extra", {}) or {}
             tag_data = TagData(
                 title=metadata.get("title"),
                 artist=metadata.get("artist"),
                 album=metadata.get("album"),
+                album_artist=metadata.get("artist"),
+                track_number=extra.get("track_number"),
+                disc_number=extra.get("disc_number"),
+                year=extra.get("release_date", "")[:4] if extra.get("release_date") else None,
+                genre=extra.get("genre"),
                 isrc=metadata.get("isrc"),
+                artwork_url=extra.get("artwork_url"),
+                source_url=job.source_url,
             )
 
             self._tagger.tag_file(file_path, tag_data)
