@@ -69,11 +69,11 @@ class Settings(BaseSettings):
 
     # --- Matching Thresholds ---
     auto_approve_threshold: float = Field(
-        default=0.90,
+        default=0.55,
         description="Confidence threshold above which matches are auto-approved",
     )
     manual_review_threshold: float = Field(
-        default=0.70,
+        default=0.40,
         description="Confidence threshold below which matches require manual review",
     )
 
