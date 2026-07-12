@@ -477,7 +477,7 @@ class JobPipeline:
                 genre=extra.get("genre"),
                 isrc=metadata.get("isrc"),
                 artwork_url=extra.get("artwork_url"),
-                source_url=job.source_url,
+                source_url=job.url,
             )
 
             self._tagger.tag_file(file_path, tag_data)
