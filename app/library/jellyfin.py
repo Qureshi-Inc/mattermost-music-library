@@ -286,7 +286,7 @@ class JellyfinClient:
             return None
 
     async def add_to_playlist(self, playlist_id: str, item_id: str, user_id: str) -> bool:
-        """Add a track to a playlist.
+        """Add a track to a playlist if not already present.
 
         Args:
             playlist_id: The playlist to add to.
@@ -294,9 +294,26 @@ class JellyfinClient:
             user_id: The user who owns the playlist.
 
         Returns:
-            True if successful.
+            True if added, False if already exists or on failure.
         """
         session = await self._get_session()
+
+        # Check if item is already in the playlist
+        try:
+            async with session.get(
+                f"{self.base_url}/Playlists/{playlist_id}/Items",
+                headers=self._headers,
+                params={"UserId": user_id},
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    existing_ids = [item.get("Id") for item in data.get("Items", [])]
+                    if item_id in existing_ids:
+                        logger.debug("Item already in playlist, skipping")
+                        return False
+        except Exception:
+            pass  # If check fails, try adding anyway
+
         try:
             url = f"{self.base_url}/Playlists/{playlist_id}/Items?Ids={item_id}&UserId={user_id}"
             async with session.post(url, headers=self._headers) as resp:
