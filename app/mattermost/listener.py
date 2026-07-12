@@ -145,6 +145,11 @@ async def run_websocket_listener() -> None:
                 # Check duplicate
                 if pipeline and await pipeline._check_duplicate_by_name(track.title, track.artist):
                     status = "ℹ️ Already exists"
+                    # Still add to user's playlist even if song already exists
+                    if pipeline:
+                        await pipeline._add_to_user_playlist_by_name(
+                            track.title, track.artist, message.user_id
+                        )
                 else:
                     # Create a job and process it
                     track_url = f"https://open.spotify.com/track/{track.spotify_id}" if track.spotify_id else ""
@@ -247,20 +252,36 @@ async def run_websocket_listener() -> None:
             logger.error("Failed to fetch thread: %s", e)
             return
 
-        # Search posts from oldest to newest for music links
+        # Get the root message (the one the thread was created under)
         posts = thread_data.get("posts", {})
-        order = thread_data.get("order", [])
+        root_post = posts.get(thread_id, {})
+        root_message = root_post.get("message", "")
 
-        music_url = None
-        for post_id in order:
-            post = posts.get(post_id, {})
-            post_message = post.get("message", "")
-            # Check for music URLs
-            from app.mattermost.client import MUSIC_URL_COMBINED
-            urls = MUSIC_URL_COMBINED.findall(post_message)
-            if urls:
-                music_url = urls[0].rstrip(")],;!?. ")
-                break
+        # Check root message for music/playlist URLs
+        from app.mattermost.client import MUSIC_URL_COMBINED, PLAYLIST_URL_COMBINED
+        playlist_urls = PLAYLIST_URL_COMBINED.findall(root_message)
+        playlist_urls = [u.rstrip(")],;!?. ") for u in playlist_urls]
+
+        music_urls = MUSIC_URL_COMBINED.findall(root_message)
+        music_url = music_urls[0].rstrip(")],;!?. ") if music_urls else None
+
+        # If root message has a playlist link, process as playlist
+        if playlist_urls:
+            from app.resolvers.playlist import is_playlist_url
+            playlist_url = playlist_urls[0]
+            if is_playlist_url(playlist_url):
+                # Fake an IncomingMessage with the playlist URL for on_playlist handler
+                playlist_message = IncomingMessage(
+                    post_id=message.post_id,
+                    channel_id=message.channel_id,
+                    user_id=message.user_id,
+                    username=message.username,
+                    message=root_message,
+                    root_id=thread_id,
+                    playlist_urls=[playlist_url],
+                )
+                await on_playlist(playlist_message)
+                return
 
         if not music_url:
             await mm_client.reply_in_thread(

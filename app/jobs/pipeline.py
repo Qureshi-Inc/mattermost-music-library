@@ -271,6 +271,44 @@ class JobPipeline:
         except Exception as e:
             logger.warning("Playlist addition failed (non-fatal): %s", e)
 
+    async def _add_to_user_playlist_by_name(self, title: str, artist: str, user_id: str) -> None:
+        """Add an existing song to a user's playlist by title/artist."""
+        try:
+            import asyncio
+            await asyncio.sleep(1)
+
+            item_id = await self._jellyfin.search_track(title, artist)
+            if not item_id:
+                return
+
+            admin_user_id = await self._jellyfin.get_admin_user_id()
+            if not admin_user_id:
+                return
+
+            # Get username from Mattermost
+            playlist_name = f"{user_id}'s picks"
+            if self.mattermost:
+                try:
+                    from app.mattermost.client import MattermostClient
+                    if isinstance(self.mattermost, MattermostClient):
+                        if not self.mattermost._session:
+                            self.mattermost._session = __import__("aiohttp").ClientSession()
+                        url = f"{self.mattermost.api_url}/users/{user_id}"
+                        async with self.mattermost._session.get(url, headers=self.mattermost._headers) as resp:
+                            if resp.status == 200:
+                                user_data = await resp.json()
+                                username = user_data.get("username", user_id)
+                                playlist_name = f"{username}'s picks"
+                except Exception:
+                    pass
+
+            playlist_id = await self._jellyfin.get_or_create_playlist(playlist_name, admin_user_id)
+            if playlist_id:
+                await self._jellyfin.add_to_playlist(playlist_id, item_id, admin_user_id)
+                logger.info("Added existing song to playlist '%s': %s - %s", playlist_name, artist, title)
+        except Exception as e:
+            logger.warning("Failed to add existing song to user playlist: %s", e)
+
     async def _check_duplicate_by_name(self, title: str, artist: str) -> bool:
         """Check if a song with the given title/artist exists in the library."""
         norm_title = title.lower().strip()
