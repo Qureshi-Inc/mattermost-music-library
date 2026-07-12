@@ -325,7 +325,8 @@ class JobPipeline:
     async def _check_duplicate(self, job: Job, metadata: dict) -> bool:
         """Check if a song with the same title/artist already exists in the library.
 
-        Returns True if duplicate found (job should be skipped).
+        If duplicate found, still adds it to the requester's playlist.
+        Returns True if duplicate found (job should skip download).
         """
         title = metadata.get("title")
         artist = metadata.get("artist")
@@ -343,12 +344,18 @@ class JobPipeline:
                 fname = mp3.stem.lower()
                 parent = mp3.parent.parent.name.lower()  # Artist folder
                 if norm_title in fname and norm_artist in parent:
+                    # Add to requester's playlist even though song already exists
+                    if job.requester_user_id:
+                        await self._add_to_user_playlist_by_name(
+                            title, artist, job.requester_user_id
+                        )
+
                     await self.queue.update_status(job.id, JobStatus.COMPLETE)
                     await self._post_status(
                         job,
-                        f"ℹ️ Already in library: **{title}** by **{artist}**",
+                        f"ℹ️ Already in library: **{title}** by **{artist}**\n\n🎧 Added to your playlist",
                     )
-                    logger.info("Duplicate found", extra={"job_id": str(job.id), "title": title, "artist": artist})
+                    logger.info("Duplicate found, added to user playlist", extra={"job_id": str(job.id), "title": title, "artist": artist})
                     return True
 
         return False
