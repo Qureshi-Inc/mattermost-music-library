@@ -273,7 +273,7 @@ class MattermostClient:
             "data": {"token": self._config.bot_token},
         }
         await ws.send_json(auth_payload)
-        logger.debug("Sent WebSocket authentication challenge")
+        logger.info("Sent WebSocket authentication challenge")
 
     async def _handle_ws_message(self, raw_data: str) -> None:
         """Parse and route a WebSocket message."""
@@ -284,9 +284,15 @@ class MattermostClient:
             return
 
         event = data.get("event")
+        seq_reply = data.get("seq_reply")
+
+        if seq_reply:
+            status = data.get("status", "")
+            logger.info("WebSocket seq_reply=%d status=%s", seq_reply, status)
+            return
 
         if event:
-            logger.debug("WebSocket event received: %s", event)
+            logger.info("WebSocket event: %s", event)
 
         # We only care about new_post events
         if event != "posted":
