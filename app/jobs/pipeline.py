@@ -283,23 +283,22 @@ class JobPipeline:
     async def _stage_score(self, job: Job, candidates: list) -> object | None:
         """Stage 3: Score and rank candidates.
 
+        Candidates are already scored by the searcher. This stage picks the best one.
+
         Returns:
             The best scoring candidate, or None if all candidates are rejected.
         """
         try:
-            from app.matching import CandidateScorer
-
-            scorer = CandidateScorer()
-            scored = await scorer.score_candidates(candidates)  # type: ignore[misc, call-arg]
-
-            if not scored:
+            if not candidates:
                 await self.queue.mark_failed(job.id, "All candidates rejected during scoring")
                 await self._post_status(job, "No suitable match found")
                 return None
 
-            # Return the highest-scoring candidate
-            best = max(scored, key=lambda c: c.get("score", 0) if isinstance(c, dict) else getattr(c, "score", 0))
-            return best  # type: ignore[no-any-return]
+            # Candidates are already scored and sorted by the searcher
+            best = candidates[0]
+            score = getattr(best, "score", 0) if hasattr(best, "score") else (best.get("score", 0) if isinstance(best, dict) else 0)
+            logger.info("Best candidate score: %.3f for job %s", score, job.id)
+            return best
 
         except Exception as e:
             logger.error(
