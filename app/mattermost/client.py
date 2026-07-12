@@ -43,6 +43,14 @@ MUSIC_URL_COMBINED = re.compile(
     r")"
 )
 
+# Playlist URL patterns
+PLAYLIST_URL_COMBINED = re.compile(
+    r"("
+    r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?playlist/[A-Za-z0-9]+[^\s]*"
+    r"|https?://music\.apple\.com/[a-z]{2}/playlist/[^\s]+"
+    r")"
+)
+
 # Command pattern: @slaptastic <command> [args]
 COMMAND_PATTERN = re.compile(
     r"@slaptastic\s+(\w+)(?:\s+(.+))?", re.IGNORECASE
@@ -73,6 +81,7 @@ class IncomingMessage:
     message: str
     root_id: str  # Thread root ID (empty string if not in a thread)
     music_urls: list[str] = field(default_factory=list)
+    playlist_urls: list[str] = field(default_factory=list)
     command: str | None = None
     command_args: str | None = None
 
@@ -97,6 +106,7 @@ class MattermostClient:
         self._seq = 0
         self._reconnect_attempt = 0
         self._on_music_link: EventCallback | None = None
+        self._on_playlist: EventCallback | None = None
         self._on_command: EventCallback | None = None
 
     @property
@@ -119,6 +129,10 @@ class MattermostClient:
     def on_music_link(self, callback: EventCallback) -> None:
         """Register a callback for when a music link is detected."""
         self._on_music_link = callback
+
+    def on_playlist(self, callback: EventCallback) -> None:
+        """Register a callback for when a playlist link is detected."""
+        self._on_playlist = callback
 
     def on_command(self, callback: EventCallback) -> None:
         """Register a callback for when an @slaptastic command is detected."""
@@ -367,6 +381,12 @@ class MattermostClient:
         user_id = post.get("user_id", "")
         root_id = post.get("root_id", "")
 
+        # Detect playlist URLs first (before single track URLs)
+        raw_playlist_urls = PLAYLIST_URL_COMBINED.findall(message_text)
+        playlist_urls = list(dict.fromkeys(
+            url.rstrip(")],;!?. ") for url in raw_playlist_urls
+        ))
+
         # Detect music URLs — clean trailing punctuation and deduplicate
         raw_urls = MUSIC_URL_COMBINED.findall(message_text)
         music_urls = list(dict.fromkeys(
@@ -389,11 +409,19 @@ class MattermostClient:
             message=message_text,
             root_id=root_id,
             music_urls=music_urls,
+            playlist_urls=playlist_urls,
             command=command,
             command_args=command_args,
         )
 
-        # Dispatch to registered callbacks
+        # Dispatch to registered callbacks — playlists take priority
+        if playlist_urls and self._on_playlist:
+            try:
+                await self._on_playlist(incoming)
+            except Exception:
+                logger.exception("Error in playlist callback")
+            return  # Don't also process individual track URLs from the same message
+
         if music_urls and self._on_music_link:
             try:
                 await self._on_music_link(incoming)

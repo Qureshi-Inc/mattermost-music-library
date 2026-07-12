@@ -209,6 +209,19 @@ class JobPipeline:
             await self.queue.mark_failed(job_id, f"Unhandled error: {str(e)}")
             await self._post_status(job, f"Failed: {str(e)}")
 
+    async def _check_duplicate_by_name(self, title: str, artist: str) -> bool:
+        """Check if a song with the given title/artist exists in the library."""
+        norm_title = title.lower().strip()
+        norm_artist = artist.lower().strip()
+        music_path = self._settings.music_base_path
+        if music_path.exists():
+            for mp3 in music_path.rglob("*.mp3"):
+                fname = mp3.stem.lower()
+                parent = mp3.parent.parent.name.lower()
+                if norm_title in fname and norm_artist in parent:
+                    return True
+        return False
+
     async def _check_duplicate(self, job: Job, metadata: dict) -> bool:
         """Check if a song with the same title/artist already exists in the library.
 
