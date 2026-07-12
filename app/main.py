@@ -14,8 +14,10 @@ from app.logging_config import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
-# Background task reference for the Mattermost WebSocket listener
+# Background task references
 _mattermost_ws_task: asyncio.Task | None = None
+_pipeline_task: asyncio.Task | None = None
+_pipeline_instance = None
 
 
 async def _start_mattermost_listener() -> None:
@@ -52,6 +54,21 @@ async def _start_mattermost_listener() -> None:
         )
 
 
+async def _start_pipeline() -> None:
+    """Start the job processing pipeline as a background task."""
+    global _pipeline_instance
+    try:
+        from app.jobs.pipeline import JobPipeline
+        from app.jobs.queue import JobQueue
+
+        queue = JobQueue()
+        _pipeline_instance = JobPipeline(queue=queue)
+        await _pipeline_instance.start()
+        logger.info("Job pipeline started")
+    except Exception as exc:
+        logger.error("Failed to start job pipeline", exc_info=exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup and shutdown logic."""
@@ -69,10 +86,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start Mattermost WebSocket listener
     await _start_mattermost_listener()
 
+    # Start job pipeline
+    await _start_pipeline()
+
     yield
 
     # --- Shutdown ---
     logger.info("Slaptastic shutting down")
+
+    # Stop the job pipeline
+    if _pipeline_instance is not None:
+        await _pipeline_instance.stop()
+        logger.info("Job pipeline stopped")
 
     # Cancel the WebSocket listener task if running
     if _mattermost_ws_task is not None and not _mattermost_ws_task.done():
