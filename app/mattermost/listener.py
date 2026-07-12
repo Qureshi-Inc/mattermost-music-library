@@ -71,11 +71,18 @@ async def run_websocket_listener() -> None:
 
             # Reply in thread acknowledging the link
             thread_id = message.root_id or message.post_id
-            await client.reply_in_thread(
+            result = await client.reply_in_thread(
                 channel_id=message.channel_id,
                 root_id=thread_id,
-                message=f"Got it! Processing `{url}` (job: `{job.id}`)",
+                message=f"⏳ Processing...",
             )
+
+            # Store the reply post ID so the pipeline can edit it
+            if result and result.get("id"):
+                from app.jobs.pipeline import get_pipeline
+                pipeline = get_pipeline()
+                if pipeline:
+                    pipeline._status_post_ids[str(job.id)] = result["id"]
 
     async def on_command(message: IncomingMessage) -> None:
         """Handle an @slaptastic command."""

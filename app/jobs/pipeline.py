@@ -18,6 +18,13 @@ from app.models.job import Job, JobStatus
 
 logger = logging.getLogger(__name__)
 
+_pipeline_instance: "JobPipeline | None" = None
+
+
+def get_pipeline() -> "JobPipeline | None":
+    """Return the running pipeline instance."""
+    return _pipeline_instance
+
 
 class JobPipeline:
     """Orchestrates the complete music acquisition pipeline.
@@ -65,8 +72,10 @@ class JobPipeline:
 
     async def start(self) -> None:
         """Start the pipeline processing loop."""
+        global _pipeline_instance
         self._running = True
         self._processing_task = asyncio.create_task(self._process_loop())
+        _pipeline_instance = self
         logger.info("Job pipeline started")
 
     async def stop(self) -> None:
