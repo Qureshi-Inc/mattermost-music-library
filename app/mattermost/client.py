@@ -177,6 +177,33 @@ class MattermostClient:
                 )
             return await resp.json()  # type: ignore[no-any-return]
 
+    async def update_post(self, post_id: str, message: str) -> dict[str, Any]:
+        """Update an existing post's message.
+
+        Args:
+            post_id: The ID of the post to update.
+            message: The new message text.
+
+        Returns:
+            The updated post object from the API.
+        """
+        if not self._session:
+            self._session = aiohttp.ClientSession()
+
+        url = f"{self.api_url}/posts/{post_id}/patch"
+        async with self._session.put(
+            url, json={"message": message}, headers=self._headers
+        ) as resp:
+            if resp.status != 200:
+                body = await resp.text()
+                logger.error(
+                    "Failed to update post (status=%d): %s", resp.status, body
+                )
+                raise RuntimeError(
+                    f"Failed to update post: {resp.status} {body}"
+                )
+            return await resp.json()  # type: ignore[no-any-return]
+
     async def reply_in_thread(
         self, channel_id: str, root_id: str, message: str
     ) -> dict[str, Any]:

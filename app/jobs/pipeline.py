@@ -53,6 +53,7 @@ class JobPipeline:
         self.queue = queue
         self.mattermost = mattermost_client
         self.auto_approve = auto_approve
+        self._status_post_ids: dict[str, str] = {}  # job_id -> mattermost post_id
         self._settings = get_settings()
         self._tagger = AudioTagger()
         self._organizer = LibraryOrganizer(self._settings.music_base_path)
@@ -608,14 +609,14 @@ class JobPipeline:
         return " ".join(parts)
 
     async def _post_status(self, job: Job, message: str) -> None:
-        """Post a status update to Mattermost for this job.
+        """Post or update a status message in Mattermost for this job.
 
-        If no Mattermost client is configured, or the job has no channel context,
-        this is a no-op.
+        Creates a single thread reply on first call, then edits that same
+        message on subsequent calls. This keeps the thread clean.
 
         Args:
             job: The job this status is about.
-            message: The status message to post.
+            message: The status message to post/update.
         """
         if self.mattermost is None:
             return
@@ -623,14 +624,22 @@ class JobPipeline:
         if not job.mattermost_channel_id:
             return
 
+        job_key = str(job.id)
+
         try:
-            await self.mattermost.post_message(  # type: ignore[attr-defined]
-                channel_id=job.mattermost_channel_id,
-                message=message,
-                root_id=job.mattermost_post_id or "",
-            )
+            existing_post_id = self._status_post_ids.get(job_key)
+
+            if existing_post_id:
+                await self.mattermost.update_post(existing_post_id, message)  # type: ignore[attr-defined]
+            else:
+                result = await self.mattermost.post_message(  # type: ignore[attr-defined]
+                    channel_id=job.mattermost_channel_id,
+                    message=message,
+                    root_id=job.mattermost_post_id or "",
+                )
+                if result and result.get("id"):
+                    self._status_post_ids[job_key] = result["id"]
         except Exception as e:
-            # Status posting failure is non-fatal
             logger.warning(
                 "Failed to post status to Mattermost",
                 extra={"job_id": str(job.id), "error": str(e)},
