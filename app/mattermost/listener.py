@@ -82,7 +82,11 @@ async def run_websocket_listener() -> None:
                 from app.jobs.pipeline import get_pipeline
                 pipeline = get_pipeline()
                 if pipeline:
-                    pipeline._status_post_ids[str(job.id)] = result["id"]
+                    job_key = str(job.id)
+                    pipeline._status_post_ids[job_key] = result["id"]
+                    logger.info("Stored status post_id=%s for job_key=%s", result["id"], job_key)
+                else:
+                    logger.warning("Pipeline not available yet, status post won't be editable")
 
     async def on_command(message: IncomingMessage) -> None:
         """Handle an @slaptastic command."""

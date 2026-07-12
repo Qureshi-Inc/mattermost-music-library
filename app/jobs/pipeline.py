@@ -641,6 +641,7 @@ class JobPipeline:
             if existing_post_id:
                 await self.mattermost.update_post(existing_post_id, message)  # type: ignore[attr-defined]
             else:
+                # No existing post found — create one (fallback if listener didn't store it)
                 result = await self.mattermost.post_message(  # type: ignore[attr-defined]
                     channel_id=job.mattermost_channel_id,
                     message=message,
@@ -648,6 +649,7 @@ class JobPipeline:
                 )
                 if result and result.get("id"):
                     self._status_post_ids[job_key] = result["id"]
+                    logger.info("Created new status post for job %s (post_id=%s)", job_key, result["id"])
         except Exception as e:
             logger.warning(
                 "Failed to post status to Mattermost",
