@@ -60,9 +60,23 @@ async def _start_pipeline() -> None:
     try:
         from app.jobs.pipeline import JobPipeline
         from app.jobs.queue import JobQueue
+        from app.mattermost.client import MattermostClient, MattermostConfig
 
+        settings = get_settings()
         queue = JobQueue()
-        _pipeline_instance = JobPipeline(queue=queue)
+
+        # Create a Mattermost client for the pipeline to post status updates
+        mm_client = None
+        if settings.mattermost_token:
+            mm_config = MattermostConfig(
+                url=settings.mattermost_url,
+                bot_token=settings.mattermost_token,
+                channel_id=settings.mattermost_channel,
+                bot_username=settings.bot_username,
+            )
+            mm_client = MattermostClient(mm_config)
+
+        _pipeline_instance = JobPipeline(queue=queue, mattermost_client=mm_client)
         await _pipeline_instance.start()
         logger.info("Job pipeline started")
     except Exception as exc:

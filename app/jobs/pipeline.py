@@ -174,9 +174,14 @@ class JobPipeline:
 
             # Mark complete
             await self.queue.update_status(job.id, JobStatus.COMPLETE)
+            title = metadata.get("title", "Unknown")
+            artist = metadata.get("artist", "Unknown")
+            album = metadata.get("album", "Unknown Album")
             await self._post_status(
                 job,
-                f"Added to library: **{metadata.get('artist', 'Unknown')} - {metadata.get('title', 'Unknown')}**",
+                f"✅ Added **{title}** by **{artist}**\n\n"
+                f"🎧 Available in Jellyfin / Finamp\n"
+                f"📁 {artist}/{album}/{title}.mp3",
             )
 
         except asyncio.CancelledError:

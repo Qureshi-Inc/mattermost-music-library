@@ -154,7 +154,7 @@ class MattermostClient:
             The created post object from the API.
         """
         if not self._session:
-            raise RuntimeError("Client not started; call start() first")
+            self._session = aiohttp.ClientSession()
 
         payload: dict[str, Any] = {
             "channel_id": channel_id,

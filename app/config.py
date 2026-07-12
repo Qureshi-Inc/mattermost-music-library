@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # --- Music Library ---
     music_base_path: Path = Field(
-        default=Path("/music"),
+        default=Path("/app/music"),
         description="Base filesystem path where music files are stored",
     )
     download_enabled: bool = Field(
