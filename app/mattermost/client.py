@@ -285,13 +285,19 @@ class MattermostClient:
 
         event = data.get("event")
 
+        if event:
+            logger.debug("WebSocket event received: %s", event)
+
         # We only care about new_post events
         if event != "posted":
             return
 
+        logger.info("Received 'posted' event")
+
         post_data = data.get("data", {})
         post_json = post_data.get("post")
         if not post_json:
+            logger.warning("Posted event has no post data")
             return
 
         # The post field is a JSON-encoded string in the WebSocket event
@@ -307,11 +313,14 @@ class MattermostClient:
         # Ignore messages not in our target channel
         channel_id = post.get("channel_id", "")
         if channel_id != self._config.channel_id:
+            logger.debug("Ignoring post from channel %s (watching %s)", channel_id, self._config.channel_id)
             return
 
         # Ignore messages from the bot itself
         sender_username = post_data.get("sender_name", "").lstrip("@")
+        logger.info("Post in target channel from user: %s", sender_username)
         if sender_username == self._config.bot_username:
+            logger.debug("Ignoring own message")
             return
 
         message_text = post.get("message", "")
