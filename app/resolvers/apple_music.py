@@ -136,7 +136,7 @@ class AppleMusicResolver(BaseResolver):
                 if resp.status != 200:
                     logger.warning("iTunes lookup returned %d for track %s", resp.status, track_id)
                     return TrackMetadata(provider="apple_music", provider_id=track_id)
-                data = await resp.json()
+                data = await resp.json(content_type=None)
         except Exception as exc:
             logger.error("iTunes lookup failed: %s", exc)
             return TrackMetadata(provider="apple_music", provider_id=track_id)
