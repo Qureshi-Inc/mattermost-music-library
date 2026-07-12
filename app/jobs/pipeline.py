@@ -83,6 +83,8 @@ class JobPipeline:
         while self._running:
             try:
                 pending_jobs = await self.queue.get_pending_jobs()
+                if pending_jobs:
+                    logger.info("Found %d pending jobs", len(pending_jobs))
                 for job in pending_jobs:
                     if not self._running:
                         break
@@ -101,7 +103,7 @@ class JobPipeline:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Error in pipeline loop", extra={"error": str(e)})
+                logger.error("Error in pipeline loop", exc_info=True, extra={"error": str(e)})
 
             # Poll interval
             await asyncio.sleep(2.0)
