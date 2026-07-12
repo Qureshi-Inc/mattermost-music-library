@@ -511,6 +511,19 @@ class JobPipeline:
 
         try:
             extra = metadata.get("extra", {}) or {}
+            artwork_url = extra.get("artwork_url")
+
+            # Fallback: use YouTube thumbnail if no artwork from metadata
+            if not artwork_url:
+                video_id = metadata.get("youtube_video_id") or extra.get("youtube_video_id")
+                if not video_id:
+                    import re
+                    yt_match = re.search(r"(?:youtu\.be/|youtube\.com/watch\?v=)([A-Za-z0-9_-]+)", job.url or "")
+                    if yt_match:
+                        video_id = yt_match.group(1)
+                if video_id:
+                    artwork_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+
             tag_data = TagData(
                 title=metadata.get("title"),
                 artist=metadata.get("artist"),
@@ -521,7 +534,7 @@ class JobPipeline:
                 year=extra.get("release_date", "")[:4] if extra.get("release_date") else None,
                 genre=extra.get("genre"),
                 isrc=metadata.get("isrc"),
-                artwork_url=extra.get("artwork_url"),
+                artwork_url=artwork_url,
                 source_url=job.url,
             )
 

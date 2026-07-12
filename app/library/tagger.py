@@ -207,10 +207,18 @@ class AudioTagger:
             # Upscale iTunes artwork to 600x600
             if "itunes.apple.com" in url or "mzstatic.com" in url:
                 url = url.replace("100x100", "600x600").replace("60x60", "600x600")
-            with httpx.Client(timeout=10) as client:
+
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
                 resp = client.get(url)
-                if resp.status_code == 200 and len(resp.content) > 100:
+                if resp.status_code == 200 and len(resp.content) > 5000:
                     return resp.content
+
+                # YouTube maxresdefault might not exist — try hqdefault
+                if "img.youtube.com" in url and "maxresdefault" in url:
+                    fallback = url.replace("maxresdefault", "hqdefault")
+                    resp = client.get(fallback)
+                    if resp.status_code == 200 and len(resp.content) > 5000:
+                        return resp.content
         except Exception as e:
             logger.warning("Failed to download artwork: %s", e)
         return None
