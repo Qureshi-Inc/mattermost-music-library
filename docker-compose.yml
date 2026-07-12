@@ -1,8 +1,8 @@
 services:
   music-importer:
     build: .
-    ports:
-      - "8079:8080"
+    expose:
+      - "8080"
     env_file:
       - .env
     volumes:
@@ -12,8 +12,8 @@ services:
 
   jellyfin:
     image: linuxserver/jellyfin
-    ports:
-      - "8096:8096"
+    expose:
+      - "8096"
     volumes:
       - jellyfin_config:/config
       - music_data:/media/music:ro
