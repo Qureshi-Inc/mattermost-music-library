@@ -94,7 +94,9 @@ class JobPipeline:
                         import datetime
                         delay = await self.queue.get_retry_delay(job)
                         if job.updated_at:
-                            elapsed = (datetime.datetime.now(datetime.UTC) - job.updated_at).total_seconds()
+                            now = datetime.datetime.utcnow()
+                            updated = job.updated_at.replace(tzinfo=None) if job.updated_at.tzinfo else job.updated_at
+                            elapsed = (now - updated).total_seconds()
                             if elapsed < delay:
                                 logger.debug("Job %s needs %.0fs more delay", job.id, delay - elapsed)
                                 continue
