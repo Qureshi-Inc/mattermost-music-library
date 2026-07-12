@@ -101,7 +101,7 @@ class SpotifyResolver(BaseResolver):
 
         token = await self._ensure_token()
         if not token:
-            return TrackMetadata(provider="spotify", provider_id=track_id)
+            return await self._oembed_fallback(url, track_id)
 
         session = await self._get_session()
         try:
@@ -168,6 +168,50 @@ class SpotifyResolver(BaseResolver):
                 if album_obj.get("images")
                 else None,
                 "release_date": album_obj.get("release_date"),
+            },
+        )
+
+    async def _oembed_fallback(self, url: str, track_id: str) -> TrackMetadata:
+        """Use Spotify's oEmbed endpoint to get basic metadata without auth."""
+        session = await self._get_session()
+        try:
+            oembed_url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
+            async with session.get(oembed_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    logger.warning("Spotify oEmbed returned %d", resp.status)
+                    return TrackMetadata(provider="spotify", provider_id=track_id)
+                data = await resp.json(content_type=None)
+        except Exception as exc:
+            logger.error("Spotify oEmbed failed: %s", exc)
+            return TrackMetadata(provider="spotify", provider_id=track_id)
+
+        # oEmbed returns: {"title": "Song Title - Artist Name", "thumbnail_url": "..."}
+        raw_title = data.get("title", "")
+        thumbnail = data.get("thumbnail_url")
+
+        # Parse "Title - Artist" or "Title by Artist" format
+        title = None
+        artist = None
+        if " by " in raw_title:
+            parts = raw_title.rsplit(" by ", 1)
+            title = parts[0].strip()
+            artist = parts[1].strip()
+        elif " - " in raw_title:
+            parts = raw_title.split(" - ", 1)
+            artist = parts[0].strip()
+            title = parts[1].strip()
+        else:
+            title = raw_title
+
+        logger.info("Spotify oEmbed resolved: %s - %s", artist, title)
+
+        return TrackMetadata(
+            title=title,
+            artist=artist,
+            provider_id=track_id,
+            provider="spotify",
+            extra={
+                "artwork_url": thumbnail,
             },
         )
 
