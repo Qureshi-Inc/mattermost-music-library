@@ -79,7 +79,7 @@ class Settings(BaseSettings):
 
     # --- Database ---
     db_url: str = Field(
-        default="sqlite+aiosqlite:///./slaptastic.db",
+        default="sqlite+aiosqlite:////app/data/slaptastic.db",
         description="Async SQLAlchemy database URL",
     )
 

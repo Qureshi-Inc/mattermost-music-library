@@ -32,9 +32,7 @@ COPY app/ ./app/
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
-RUN chown -R slaptastic:slaptastic /app
-
-USER slaptastic
+RUN mkdir -p /app/data /app/music
 
 EXPOSE 8080
 
