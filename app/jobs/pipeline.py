@@ -89,15 +89,17 @@ class JobPipeline:
                     if not self._running:
                         break
 
-                    # Check if retry delay has elapsed
-                    delay = await self.queue.get_retry_delay(job)
-                    if delay > 0 and job.retry_count > 0:
-                        # Check if enough time has passed since last update
-                        # For simplicity, we wait the delay before processing
-                        await asyncio.sleep(delay)
-                        if not self._running:
-                            break
+                    # Skip jobs that need retry delay
+                    if job.retry_count > 0:
+                        import datetime
+                        delay = await self.queue.get_retry_delay(job)
+                        if job.updated_at:
+                            elapsed = (datetime.datetime.now(datetime.UTC) - job.updated_at).total_seconds()
+                            if elapsed < delay:
+                                logger.debug("Job %s needs %.0fs more delay", job.id, delay - elapsed)
+                                continue
 
+                    logger.info("Processing job %s (retry=%d)", job.id, job.retry_count)
                     await self.process_job(job.id)
 
             except asyncio.CancelledError:
