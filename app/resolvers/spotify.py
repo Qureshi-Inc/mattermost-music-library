@@ -172,46 +172,72 @@ class SpotifyResolver(BaseResolver):
         )
 
     async def _oembed_fallback(self, url: str, track_id: str) -> TrackMetadata:
-        """Use Spotify's oEmbed endpoint to get basic metadata without auth."""
+        """Use Spotify's page Open Graph metadata to get track info without auth."""
         session = await self._get_session()
+
+        # Fetch the track page for OG metadata
         try:
-            oembed_url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
-            async with session.get(oembed_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            track_url = f"https://open.spotify.com/track/{track_id}"
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; Slaptastic/1.0)"}
+            async with session.get(track_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
-                    logger.warning("Spotify oEmbed returned %d", resp.status)
+                    logger.warning("Spotify page returned %d", resp.status)
                     return TrackMetadata(provider="spotify", provider_id=track_id)
-                data = await resp.json(content_type=None)
+                html = await resp.text()
         except Exception as exc:
-            logger.error("Spotify oEmbed failed: %s", exc)
+            logger.error("Spotify page fetch failed: %s", exc)
             return TrackMetadata(provider="spotify", provider_id=track_id)
 
-        # oEmbed returns: {"title": "Song Title - Artist Name", "thumbnail_url": "..."}
-        raw_title = data.get("title", "")
-        thumbnail = data.get("thumbnail_url")
-
-        # Parse "Title - Artist" or "Title by Artist" format
+        # Parse OG tags
         title = None
         artist = None
-        if " by " in raw_title:
-            parts = raw_title.rsplit(" by ", 1)
-            title = parts[0].strip()
-            artist = parts[1].strip()
-        elif " - " in raw_title:
-            parts = raw_title.split(" - ", 1)
-            artist = parts[0].strip()
-            title = parts[1].strip()
-        else:
-            title = raw_title
+        album = None
+        year = None
+        artwork_url = None
 
-        logger.info("Spotify oEmbed resolved: %s - %s", artist, title)
+        # og:title = song title
+        og_title = re.search(r'property="og:title"\s+content="([^"]*)"', html)
+        if og_title:
+            title = og_title.group(1)
+
+        # og:description = "Artist · Album · Song · Year"
+        og_desc = re.search(r'property="og:description"\s+content="([^"]*)"', html)
+        if og_desc:
+            parts = [p.strip() for p in og_desc.group(1).split("·")]
+            if len(parts) >= 1:
+                artist = parts[0]
+            if len(parts) >= 2:
+                album = parts[1]
+            if len(parts) >= 4:
+                year = parts[3]
+
+        # og:image = artwork
+        og_image = re.search(r'property="og:image"\s+content="([^"]*)"', html)
+        if og_image:
+            artwork_url = og_image.group(1)
+
+        # Also try oEmbed thumbnail as fallback artwork
+        if not artwork_url:
+            try:
+                oembed_url = f"https://open.spotify.com/oembed?url={track_url}"
+                async with session.get(oembed_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        artwork_url = data.get("thumbnail_url")
+            except Exception:
+                pass
+
+        logger.info("Spotify OG resolved: %s - %s (album=%s)", artist, title, album)
 
         return TrackMetadata(
             title=title,
             artist=artist,
+            album=album,
             provider_id=track_id,
             provider="spotify",
             extra={
-                "artwork_url": thumbnail,
+                "artwork_url": artwork_url,
+                "release_date": year,
             },
         )
 
