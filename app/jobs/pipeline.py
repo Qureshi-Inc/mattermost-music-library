@@ -149,6 +149,10 @@ class JobPipeline:
             if metadata is None:
                 return
 
+            # Stage 1.5: Check for duplicates
+            if await self._check_duplicate(job, metadata):
+                return
+
             # Stage 2: Search for YouTube candidates
             candidates = await self._stage_search(job, metadata)
             if candidates is None:
@@ -204,6 +208,37 @@ class JobPipeline:
             )
             await self.queue.mark_failed(job_id, f"Unhandled error: {str(e)}")
             await self._post_status(job, f"Failed: {str(e)}")
+
+    async def _check_duplicate(self, job: Job, metadata: dict) -> bool:
+        """Check if a song with the same title/artist already exists in the library.
+
+        Returns True if duplicate found (job should be skipped).
+        """
+        title = metadata.get("title")
+        artist = metadata.get("artist")
+        if not title or not artist:
+            return False
+
+        # Normalize for comparison
+        norm_title = title.lower().strip()
+        norm_artist = artist.lower().strip()
+
+        # Check filesystem
+        music_path = self._settings.music_base_path
+        if music_path.exists():
+            for mp3 in music_path.rglob("*.mp3"):
+                fname = mp3.stem.lower()
+                parent = mp3.parent.parent.name.lower()  # Artist folder
+                if norm_title in fname and norm_artist in parent:
+                    await self.queue.update_status(job.id, JobStatus.COMPLETE)
+                    await self._post_status(
+                        job,
+                        f"ℹ️ Already in library: **{title}** by **{artist}**",
+                    )
+                    logger.info("Duplicate found", extra={"job_id": str(job.id), "title": title, "artist": artist})
+                    return True
+
+        return False
 
     async def _stage_resolve(self, job: Job) -> dict | None:
         """Stage 1: Resolve metadata from the source URL.
@@ -641,15 +676,20 @@ class JobPipeline:
             if existing_post_id:
                 await self.mattermost.update_post(existing_post_id, message)  # type: ignore[attr-defined]
             else:
-                # No existing post found — create one (fallback if listener didn't store it)
-                result = await self.mattermost.post_message(  # type: ignore[attr-defined]
-                    channel_id=job.mattermost_channel_id,
-                    message=message,
-                    root_id=job.mattermost_post_id or "",
-                )
-                if result and result.get("id"):
-                    self._status_post_ids[job_key] = result["id"]
-                    logger.info("Created new status post for job %s (post_id=%s)", job_key, result["id"])
+                # Wait briefly for the listener to store the post ID
+                await asyncio.sleep(0.5)
+                existing_post_id = self._status_post_ids.get(job_key)
+                if existing_post_id:
+                    await self.mattermost.update_post(existing_post_id, message)  # type: ignore[attr-defined]
+                else:
+                    # Last resort — create a new post
+                    result = await self.mattermost.post_message(  # type: ignore[attr-defined]
+                        channel_id=job.mattermost_channel_id,
+                        message=message,
+                        root_id=job.mattermost_post_id or "",
+                    )
+                    if result and result.get("id"):
+                        self._status_post_ids[job_key] = result["id"]
         except Exception as e:
             logger.warning(
                 "Failed to post status to Mattermost",
