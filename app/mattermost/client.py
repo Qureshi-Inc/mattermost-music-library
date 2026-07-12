@@ -349,11 +349,17 @@ class MattermostClient:
             logger.debug("Ignoring post from channel %s (watching %s)", channel_id, self._config.channel_id)
             return
 
-        # Ignore messages from the bot itself
+        # Ignore messages from bots (including itself)
         sender_username = post_data.get("sender_name", "").lstrip("@")
         logger.info("Post in target channel from user: %s", sender_username)
         if sender_username == self._config.bot_username:
             logger.debug("Ignoring own message")
+            return
+
+        # Ignore messages from other bots
+        props = post.get("props", {}) or {}
+        if props.get("from_bot") == "true":
+            logger.debug("Ignoring bot message from %s", sender_username)
             return
 
         message_text = post.get("message", "")
@@ -361,8 +367,11 @@ class MattermostClient:
         user_id = post.get("user_id", "")
         root_id = post.get("root_id", "")
 
-        # Detect music URLs
-        music_urls = MUSIC_URL_COMBINED.findall(message_text)
+        # Detect music URLs — clean trailing punctuation and deduplicate
+        raw_urls = MUSIC_URL_COMBINED.findall(message_text)
+        music_urls = list(dict.fromkeys(
+            url.rstrip(")],;!?. ") for url in raw_urls
+        ))
 
         # Detect @slaptastic commands
         command: str | None = None
