@@ -210,6 +210,11 @@ async def run_websocket_listener() -> None:
 
     async def on_command(message: IncomingMessage) -> None:
         """Handle an @slaptastic command."""
+        # Handle bare @slaptastic in a thread — scan for music links
+        if message.command == "_thread_scan":
+            await _handle_thread_scan(message, client)
+            return
+
         response = await command_handler.handle(message)
         if response:
             thread_id = message.root_id or message.post_id
@@ -218,6 +223,88 @@ async def run_websocket_listener() -> None:
                 root_id=thread_id,
                 message=response,
             )
+
+    async def _handle_thread_scan(message: IncomingMessage, mm_client: MattermostClient) -> None:
+        """Scan a thread for music links and process the first one found."""
+        from app.database import async_session_factory
+        from app.jobs.queue import JobQueue
+        from app.models.job import SourcePlatform
+
+        thread_id = message.root_id
+        if not thread_id:
+            return
+
+        # Fetch the thread
+        try:
+            if not mm_client._session:
+                mm_client._session = __import__("aiohttp").ClientSession()
+            url = f"{mm_client.api_url}/posts/{thread_id}/thread"
+            async with mm_client._session.get(url, headers=mm_client._headers) as resp:
+                if resp.status != 200:
+                    return
+                thread_data = await resp.json()
+        except Exception as e:
+            logger.error("Failed to fetch thread: %s", e)
+            return
+
+        # Search posts from oldest to newest for music links
+        posts = thread_data.get("posts", {})
+        order = thread_data.get("order", [])
+
+        music_url = None
+        for post_id in order:
+            post = posts.get(post_id, {})
+            post_message = post.get("message", "")
+            # Check for music URLs
+            from app.mattermost.client import MUSIC_URL_COMBINED
+            urls = MUSIC_URL_COMBINED.findall(post_message)
+            if urls:
+                music_url = urls[0].rstrip(")],;!?. ")
+                break
+
+        if not music_url:
+            await mm_client.reply_in_thread(
+                channel_id=message.channel_id,
+                root_id=thread_id,
+                message="I couldn't find a music link in this thread.",
+            )
+            return
+
+        # Determine platform
+        platform = SourcePlatform.UNKNOWN
+        if "youtube.com" in music_url or "youtu.be" in music_url:
+            platform = SourcePlatform.YOUTUBE
+        elif "spotify.com" in music_url:
+            platform = SourcePlatform.SPOTIFY
+        elif "music.apple.com" in music_url:
+            platform = SourcePlatform.APPLE_MUSIC
+
+        # Create job
+        async with async_session_factory() as session:
+            queue = JobQueue(session)
+            job = await queue.create_job(
+                url=music_url,
+                source_platform=platform,
+                mattermost_post_id=message.post_id,
+                mattermost_channel_id=message.channel_id,
+                requester_user_id=message.user_id,
+            )
+            await session.commit()
+
+        logger.info("Thread scan created job", extra={"job_id": str(job.id), "url": music_url})
+
+        # Post status
+        result = await mm_client.reply_in_thread(
+            channel_id=message.channel_id,
+            root_id=thread_id,
+            message="⏳ Processing...",
+        )
+
+        if result and result.get("id"):
+            from app.jobs.pipeline import get_pipeline
+            pipeline = get_pipeline()
+            if pipeline:
+                pipeline._status_post_ids[str(job.id)] = result["id"]
 
     client.on_music_link(on_music_link)
     client.on_playlist(on_playlist)

@@ -427,6 +427,14 @@ class MattermostClient:
                 await self._on_music_link(incoming)
             except Exception:
                 logger.exception("Error in music link callback")
+        elif not music_urls and not command and root_id and f"@{self._config.bot_username}" in message_text.lower():
+            # Bare @slaptastic in a thread — scan thread for music links
+            incoming.command = "_thread_scan"
+            if self._on_command:
+                try:
+                    await self._on_command(incoming)
+                except Exception:
+                    logger.exception("Error in thread scan callback")
 
         if command and self._on_command:
             try:
