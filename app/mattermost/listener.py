@@ -256,6 +256,8 @@ async def run_websocket_listener() -> None:
         posts = thread_data.get("posts", {})
         root_post = posts.get(thread_id, {})
         root_message = root_post.get("message", "")
+        # Use the original poster's user_id for playlist attribution
+        original_user_id = root_post.get("user_id", message.user_id)
 
         # Check root message for music/playlist URLs
         from app.mattermost.client import MUSIC_URL_COMBINED, PLAYLIST_URL_COMBINED
@@ -270,11 +272,10 @@ async def run_websocket_listener() -> None:
             from app.resolvers.playlist import is_playlist_url
             playlist_url = playlist_urls[0]
             if is_playlist_url(playlist_url):
-                # Fake an IncomingMessage with the playlist URL for on_playlist handler
                 playlist_message = IncomingMessage(
                     post_id=message.post_id,
                     channel_id=message.channel_id,
-                    user_id=message.user_id,
+                    user_id=original_user_id,
                     username=message.username,
                     message=root_message,
                     root_id=thread_id,
@@ -300,7 +301,7 @@ async def run_websocket_listener() -> None:
         elif "music.apple.com" in music_url:
             platform = SourcePlatform.APPLE_MUSIC
 
-        # Create job
+        # Create job — attribute to the original poster
         async with async_session_factory() as session:
             queue = JobQueue(session)
             job = await queue.create_job(
@@ -308,7 +309,7 @@ async def run_websocket_listener() -> None:
                 source_platform=platform,
                 mattermost_post_id=message.post_id,
                 mattermost_channel_id=message.channel_id,
-                requester_user_id=message.user_id,
+                requester_user_id=original_user_id,
             )
             await session.commit()
 
