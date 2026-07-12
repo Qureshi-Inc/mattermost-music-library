@@ -179,6 +179,133 @@ class JellyfinClient:
             )
             return None
 
+    async def search_track(self, title: str, artist: str) -> str | None:
+        """Search for a track in Jellyfin by title and artist.
+
+        Returns the item ID if found, None otherwise.
+        """
+        session = await self._get_session()
+        try:
+            params = {
+                "searchTerm": f"{title} {artist}",
+                "IncludeItemTypes": "Audio",
+                "Recursive": "true",
+                "Limit": "5",
+            }
+            async with session.get(
+                f"{self.base_url}/Items", headers=self._headers, params=params
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+
+            items = data.get("Items", [])
+            if not items:
+                return None
+
+            # Find best match
+            norm_title = title.lower().strip()
+            for item in items:
+                item_name = (item.get("Name") or "").lower()
+                if norm_title in item_name or item_name in norm_title:
+                    return item.get("Id")
+
+            # Fall back to first result
+            return items[0].get("Id")
+        except Exception as e:
+            logger.warning("Jellyfin search failed: %s", e)
+            return None
+
+    async def get_or_create_playlist(self, playlist_name: str, user_id: str) -> str | None:
+        """Get an existing playlist by name or create a new one.
+
+        Args:
+            playlist_name: Name of the playlist.
+            user_id: Jellyfin user ID who owns the playlist.
+
+        Returns:
+            The playlist ID, or None on failure.
+        """
+        session = await self._get_session()
+
+        # Search for existing playlist
+        try:
+            params = {
+                "IncludeItemTypes": "Playlist",
+                "Recursive": "true",
+                "searchTerm": playlist_name,
+            }
+            async with session.get(
+                f"{self.base_url}/Items", headers=self._headers, params=params
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    for item in data.get("Items", []):
+                        if item.get("Name", "").lower() == playlist_name.lower():
+                            return item.get("Id")
+        except Exception as e:
+            logger.warning("Playlist search failed: %s", e)
+
+        # Create new playlist
+        try:
+            async with session.post(
+                f"{self.base_url}/Playlists",
+                headers=self._headers,
+                json={"Name": playlist_name, "UserId": user_id, "MediaType": "Audio", "Ids": []},
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    playlist_id = data.get("Id")
+                    logger.info("Created Jellyfin playlist: %s (id=%s)", playlist_name, playlist_id)
+                    return playlist_id
+                else:
+                    body = await resp.text()
+                    logger.error("Failed to create playlist: %d %s", resp.status, body)
+                    return None
+        except Exception as e:
+            logger.error("Playlist creation error: %s", e)
+            return None
+
+    async def add_to_playlist(self, playlist_id: str, item_id: str, user_id: str) -> bool:
+        """Add a track to a playlist.
+
+        Args:
+            playlist_id: The playlist to add to.
+            item_id: The track item ID.
+            user_id: The user who owns the playlist.
+
+        Returns:
+            True if successful.
+        """
+        session = await self._get_session()
+        try:
+            url = f"{self.base_url}/Playlists/{playlist_id}/Items?Ids={item_id}&UserId={user_id}"
+            async with session.post(url, headers=self._headers) as resp:
+                if resp.status == 204:
+                    return True
+                else:
+                    logger.warning("Failed to add item to playlist: %d", resp.status)
+                    return False
+        except Exception as e:
+            logger.error("Add to playlist error: %s", e)
+            return False
+
+    async def get_admin_user_id(self) -> str | None:
+        """Get the first admin user's ID (used as playlist owner)."""
+        session = await self._get_session()
+        try:
+            async with session.get(f"{self.base_url}/Users", headers=self._headers) as resp:
+                if resp.status != 200:
+                    return None
+                users = await resp.json()
+                for user in users:
+                    if user.get("Policy", {}).get("IsAdministrator"):
+                        return user.get("Id")
+                # Fall back to first user
+                return users[0].get("Id") if users else None
+        except Exception:
+            return None
+
     async def close(self) -> None:
         """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:

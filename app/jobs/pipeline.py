@@ -191,6 +191,10 @@ class JobPipeline:
             title = metadata.get("title", "Unknown")
             artist = metadata.get("artist", "Unknown")
             album = metadata.get("album", "Unknown Album")
+
+            # Add to user's playlist in Jellyfin
+            await self._add_to_user_playlist(job, title, artist)
+
             await self._post_status(
                 job,
                 f"✅ Added **{title}** by **{artist}**\n\n"
@@ -208,6 +212,64 @@ class JobPipeline:
             )
             await self.queue.mark_failed(job_id, f"Unhandled error: {str(e)}")
             await self._post_status(job, f"Failed: {str(e)}")
+
+    async def _add_to_user_playlist(self, job: Job, title: str, artist: str) -> None:
+        """Add the imported song to the requester's personal playlist in Jellyfin."""
+        try:
+            if not job.requester_user_id:
+                return
+
+            # Wait a moment for Jellyfin to index the new file
+            import asyncio
+            await asyncio.sleep(3)
+
+            # Find the track in Jellyfin
+            item_id = await self._jellyfin.search_track(title, artist)
+            if not item_id:
+                logger.warning("Could not find track in Jellyfin for playlist: %s - %s", artist, title)
+                return
+
+            # Get admin user ID (playlists are owned by admin, visible to all)
+            admin_user_id = await self._jellyfin.get_admin_user_id()
+            if not admin_user_id:
+                logger.warning("Could not get Jellyfin admin user ID")
+                return
+
+            # Get or create the user's playlist
+            # Use the Mattermost username from the job's requester
+            from app.database import async_session_factory
+            from sqlalchemy import select, text
+            playlist_name = f"{job.requester_user_id}'s picks"
+
+            # Try to get the Mattermost username for a nicer playlist name
+            if self.mattermost:
+                try:
+                    from app.mattermost.client import MattermostClient
+                    if isinstance(self.mattermost, MattermostClient):
+                        if not self.mattermost._session:
+                            self.mattermost._session = __import__("aiohttp").ClientSession()
+                        url = f"{self.mattermost.api_url}/users/{job.requester_user_id}"
+                        async with self.mattermost._session.get(url, headers=self.mattermost._headers) as resp:
+                            if resp.status == 200:
+                                user_data = await resp.json()
+                                username = user_data.get("username", job.requester_user_id)
+                                playlist_name = f"{username}'s picks"
+                except Exception:
+                    pass
+
+            playlist_id = await self._jellyfin.get_or_create_playlist(playlist_name, admin_user_id)
+            if not playlist_id:
+                logger.warning("Could not get/create playlist: %s", playlist_name)
+                return
+
+            # Add the track
+            success = await self._jellyfin.add_to_playlist(playlist_id, item_id, admin_user_id)
+            if success:
+                logger.info("Added to playlist '%s': %s - %s", playlist_name, artist, title)
+            else:
+                logger.warning("Failed to add to playlist '%s'", playlist_name)
+        except Exception as e:
+            logger.warning("Playlist addition failed (non-fatal): %s", e)
 
     async def _check_duplicate_by_name(self, title: str, artist: str) -> bool:
         """Check if a song with the given title/artist exists in the library."""
