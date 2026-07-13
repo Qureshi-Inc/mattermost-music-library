@@ -187,7 +187,16 @@ async def run_websocket_listener() -> None:
                 logger.error("Playlist track failed: %s - %s: %s", track.artist, track.title, e)
                 status = "❌ Failed"
 
-            results.append({"title": track.title, "artist": track.artist, "status": status})
+            # Build links
+            links = ""
+            if track.spotify_id:
+                links += f"[:spotify:](https://open.spotify.com/track/{track.spotify_id})"
+            if track.apple_music_id:
+                if links:
+                    links += " "
+                links += f"[:applem:](https://music.apple.com/track/{track.apple_music_id})"
+
+            results.append({"title": track.title, "artist": track.artist, "status": status, "links": links})
 
             # Update progress every 2 tracks
             if (i + 1) % 2 == 0 or (i + 1) == total:
@@ -203,9 +212,9 @@ async def run_websocket_listener() -> None:
         failed = sum(1 for r in results if "Failed" in r["status"])
 
         summary = f"✅ Playlist **{playlist.name}** imported ({added + exists}/{total} songs)\n\n"
-        summary += "| # | Song | Artist | Status |\n|---|------|--------|--------|\n"
+        summary += "| # | Song | Artist | Links | Status |\n|---|------|--------|-------|--------|\n"
         for i, r in enumerate(results):
-            summary += f"| {i+1} | {r['title'][:30]} | {r['artist'][:25]} | {r['status']} |\n"
+            summary += f"| {i+1} | {r['title'][:30]} | {r['artist'][:25]} | {r['links']} | {r['status']} |\n"
 
         if failed > 0:
             summary += f"\n_{failed} song(s) could not be found or downloaded._"
