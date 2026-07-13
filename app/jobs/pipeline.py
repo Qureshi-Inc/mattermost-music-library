@@ -362,30 +362,46 @@ class JobPipeline:
             return metadata
 
         results = data.get("results", [])
-        if not results:
-            return metadata
 
-        # Find the best match
-        norm_title = clean_title.lower()
-        norm_artist = clean_artist.lower()
-        best = None
+        if results:
+            # Find the best iTunes match
+            norm_title = clean_title.lower()
+            norm_artist = clean_artist.lower()
+            best = None
 
-        for r in results:
-            r_title = (r.get("trackName") or "").lower()
-            r_artist = (r.get("artistName") or "").lower()
-            if norm_title in r_title or r_title in norm_title:
-                if not norm_artist or norm_artist in r_artist or r_artist in norm_artist:
-                    best = r
-                    break
+            for r in results:
+                r_title = (r.get("trackName") or "").lower()
+                r_artist = (r.get("artistName") or "").lower()
+                if norm_title in r_title or r_title in norm_title:
+                    if not norm_artist or norm_artist in r_artist or r_artist in norm_artist:
+                        best = r
+                        break
 
-        if not best:
-            best = results[0]
+            if not best:
+                best = results[0]
 
-        # Enrich metadata with iTunes data
+            return self._apply_itunes_enrichment(metadata, best)
+
+        # Fallback: try Spotify OG metadata if we have a Spotify URL
+        logger.info("iTunes found nothing, trying Spotify OG fallback")
+        enriched = await self._enrich_from_spotify_og(metadata, clean_title, clean_artist)
+        if enriched:
+            return enriched
+
+        # Last resort: clean what we have from YouTube title parsing
+        logger.info("No enrichment source found, using cleaned YouTube title")
+        enriched = dict(metadata)
+        if clean_title != title:
+            enriched["title"] = clean_title
+        if clean_artist and not artist:
+            enriched["artist"] = clean_artist
+        return enriched
+
+    def _apply_itunes_enrichment(self, metadata: dict, best: dict) -> dict:
+        """Apply iTunes result data to metadata."""
         enriched = dict(metadata)
         extra = dict(enriched.get("extra", {}) or {})
 
-        # Only override if iTunes has better data
         if best.get("trackName"):
             enriched["title"] = best["trackName"]
         if best.get("artistName"):
@@ -393,7 +409,6 @@ class JobPipeline:
         if best.get("collectionName"):
             enriched["album"] = best["collectionName"]
 
-        # Always take these from iTunes if available
         if best.get("artworkUrl100"):
             extra["artwork_url"] = best["artworkUrl100"].replace("100x100", "600x600")
         if best.get("primaryGenreName"):
@@ -407,10 +422,76 @@ class JobPipeline:
 
         enriched["extra"] = extra
         logger.info(
-            "Enriched metadata via iTunes: %s - %s (album=%s)",
-            enriched.get("artist"), enriched.get("title"), enriched.get("album"),
+            "Enriched via iTunes: %s - %s (album=%s, genre=%s)",
+            enriched.get("artist"), enriched.get("title"),
+            enriched.get("album"), extra.get("genre"),
         )
         return enriched
+
+    async def _enrich_from_spotify_og(self, metadata: dict, title: str, artist: str) -> dict | None:
+        """Try to enrich metadata from Spotify's Open Graph page."""
+        import aiohttp
+
+        query = f"{title} {artist}".strip()
+        if not query:
+            return None
+
+        try:
+            # Search Spotify for the track
+            settings = self._settings
+            if not settings.spotify_client_id or not settings.spotify_client_secret:
+                return None
+
+            async with aiohttp.ClientSession() as session:
+                # Get token
+                async with session.post(
+                    "https://accounts.spotify.com/api/token",
+                    data={"grant_type": "client_credentials"},
+                    auth=aiohttp.BasicAuth(settings.spotify_client_id, settings.spotify_client_secret),
+                ) as resp:
+                    if resp.status != 200:
+                        return None
+                    token = (await resp.json())["access_token"]
+
+                # Search for the track
+                async with session.get(
+                    "https://api.spotify.com/v1/search",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"q": query, "type": "track", "limit": "1"},
+                ) as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
+
+            items = data.get("tracks", {}).get("items", [])
+            if not items:
+                return None
+
+            track = items[0]
+            enriched = dict(metadata)
+            extra = dict(enriched.get("extra", {}) or {})
+
+            enriched["title"] = track.get("name") or enriched.get("title")
+            artists = ", ".join(a["name"] for a in track.get("artists", []) if a.get("name"))
+            if artists:
+                enriched["artist"] = artists
+            album_obj = track.get("album", {})
+            if album_obj.get("name"):
+                enriched["album"] = album_obj["name"]
+            if album_obj.get("images"):
+                extra["artwork_url"] = album_obj["images"][0]["url"]
+            if album_obj.get("release_date"):
+                extra["release_date"] = album_obj["release_date"]
+
+            enriched["extra"] = extra
+            logger.info(
+                "Enriched via Spotify: %s - %s (album=%s)",
+                enriched.get("artist"), enriched.get("title"), enriched.get("album"),
+            )
+            return enriched
+        except Exception as e:
+            logger.warning("Spotify enrichment failed: %s", e)
+            return None
 
     async def _check_duplicate_by_name(self, title: str, artist: str) -> bool:
         """Check if a song with the given title/artist exists in the library."""
