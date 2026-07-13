@@ -163,7 +163,7 @@ async def run_websocket_listener() -> None:
                         job = await queue.create_job(
                             url=track_url or f"search:{track.artist} - {track.title}",
                             source_platform=platform,
-                            mattermost_post_id=message.post_id,
+                            mattermost_post_id=None,
                             mattermost_channel_id=message.channel_id,
                             requester_user_id=message.user_id,
                         )
