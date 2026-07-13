@@ -149,7 +149,10 @@ class JobPipeline:
             if metadata is None:
                 return
 
-            # Stage 1.5: Check for duplicates
+            # Stage 1.5: Enrich metadata via iTunes
+            metadata = await self._stage_enrich(metadata)
+
+            # Stage 1.6: Check for duplicates
             if await self._check_duplicate(job, metadata):
                 return
 
@@ -308,6 +311,106 @@ class JobPipeline:
                 logger.info("Added existing song to playlist '%s': %s - %s", playlist_name, artist, title)
         except Exception as e:
             logger.warning("Failed to add existing song to user playlist: %s", e)
+
+    async def _stage_enrich(self, metadata: dict) -> dict:
+        """Enrich metadata by cross-referencing iTunes Search API.
+
+        Takes whatever title/artist we have and searches iTunes for the
+        canonical metadata: clean title, artist, album, year, genre,
+        track number, artwork URL.
+        """
+        title = metadata.get("title")
+        artist = metadata.get("artist")
+        if not title:
+            return metadata
+
+        import re
+        import aiohttp
+
+        # Clean YouTube-style titles for better search
+        clean_title = re.sub(r'\s*[\(\[].*?[\)\]]', '', title).strip()
+        clean_artist = artist or ""
+
+        # Parse "Artist - Title" format
+        if " - " in clean_title and not clean_artist:
+            parts = clean_title.split(" - ", 1)
+            clean_artist = parts[0].strip()
+            clean_title = parts[1].strip()
+
+        query = f"{clean_title} {clean_artist}".strip()
+        if not query:
+            return metadata
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                params = {
+                    "term": query,
+                    "media": "music",
+                    "entity": "song",
+                    "limit": "5",
+                }
+                async with session.get(
+                    "https://itunes.apple.com/search",
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status != 200:
+                        return metadata
+                    data = await resp.json(content_type=None)
+        except Exception as e:
+            logger.warning("iTunes enrichment failed: %s", e)
+            return metadata
+
+        results = data.get("results", [])
+        if not results:
+            return metadata
+
+        # Find the best match
+        norm_title = clean_title.lower()
+        norm_artist = clean_artist.lower()
+        best = None
+
+        for r in results:
+            r_title = (r.get("trackName") or "").lower()
+            r_artist = (r.get("artistName") or "").lower()
+            if norm_title in r_title or r_title in norm_title:
+                if not norm_artist or norm_artist in r_artist or r_artist in norm_artist:
+                    best = r
+                    break
+
+        if not best:
+            best = results[0]
+
+        # Enrich metadata with iTunes data
+        enriched = dict(metadata)
+        extra = dict(enriched.get("extra", {}) or {})
+
+        # Only override if iTunes has better data
+        if best.get("trackName"):
+            enriched["title"] = best["trackName"]
+        if best.get("artistName"):
+            enriched["artist"] = best["artistName"]
+        if best.get("collectionName"):
+            enriched["album"] = best["collectionName"]
+
+        # Always take these from iTunes if available
+        if best.get("artworkUrl100"):
+            extra["artwork_url"] = best["artworkUrl100"].replace("100x100", "600x600")
+        if best.get("primaryGenreName"):
+            extra["genre"] = best["primaryGenreName"]
+        if best.get("releaseDate"):
+            extra["release_date"] = best["releaseDate"]
+        if best.get("trackNumber"):
+            extra["track_number"] = best["trackNumber"]
+        if best.get("discNumber"):
+            extra["disc_number"] = best["discNumber"]
+
+        enriched["extra"] = extra
+        logger.info(
+            "Enriched metadata via iTunes: %s - %s (album=%s)",
+            enriched.get("artist"), enriched.get("title"), enriched.get("album"),
+        )
+        return enriched
 
     async def _check_duplicate_by_name(self, title: str, artist: str) -> bool:
         """Check if a song with the given title/artist exists in the library."""
