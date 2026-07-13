@@ -108,11 +108,10 @@ async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
         async with session.get(
             f"https://api.spotify.com/v1/playlists/{playlist_id}",
             headers={"Authorization": f"Bearer {token}"},
-            params={"fields": "name,owner.display_name,tracks.total,tracks.items(track(name,artists,album,duration_ms,external_ids,id,external_urls))"},
         ) as resp:
             if resp.status != 200:
-                logger.error("Spotify playlist fetch failed: %d", resp.status)
-                return None
+                logger.warning("Spotify playlist API returned %d, trying embed fallback", resp.status)
+                return await _spotify_embed_fallback(playlist_id, token)
             data = await resp.json()
 
     name = data.get("name", "Unknown Playlist")
@@ -174,8 +173,81 @@ async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
             ))
         next_url = page.get("next")
 
+    # If API returned name but no tracks, try embed fallback
+    if not tracks and total > 0:
+        logger.warning("Spotify API returned name but 0 tracks (total=%d), trying embed", total)
+        fallback = await _spotify_embed_fallback(playlist_id, token)
+        if fallback and fallback.tracks:
+            return fallback
+
     logger.info("Resolved Spotify playlist: %s (%d tracks)", name, len(tracks))
     return PlaylistInfo(name=name, owner=owner, track_count=total, tracks=tracks, platform="spotify")
+
+
+async def _spotify_embed_fallback(playlist_id: str, token: str) -> PlaylistInfo | None:
+    """Scrape playlist tracks from Spotify's embed page or use search-based approach."""
+    async with aiohttp.ClientSession() as session:
+        # Get playlist page OG data for the name
+        url = f"https://open.spotify.com/playlist/{playlist_id}"
+        async with session.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; Slaptastic/1.0)"},
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as resp:
+            if resp.status != 200:
+                return None
+            html = await resp.text()
+
+    import re
+
+    # Get playlist name
+    name_match = re.search(r'property="og:title"\s+content="([^"]*)"', html)
+    name = name_match.group(1) if name_match else "Unknown Playlist"
+
+    # Extract track links from the HTML (Spotify embeds track IDs in the page)
+    track_ids = re.findall(r'/track/([A-Za-z0-9]{22})', html)
+    track_ids = list(dict.fromkeys(track_ids))  # Deduplicate preserving order
+
+    if not track_ids:
+        logger.warning("Embed fallback: no track IDs found in page for %s", playlist_id)
+        return PlaylistInfo(name=name, track_count=0, tracks=[], platform="spotify")
+
+    # Fetch metadata for each track via the API (tracks endpoint works)
+    tracks: list[PlaylistTrack] = []
+    async with aiohttp.ClientSession() as session:
+        # Batch fetch tracks (max 50 per request)
+        for i in range(0, len(track_ids), 50):
+            batch = track_ids[i:i + 50]
+            async with session.get(
+                "https://api.spotify.com/v1/tracks",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"ids": ",".join(batch)},
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning("Batch track fetch failed: %d", resp.status)
+                    continue
+                data = await resp.json()
+
+            for track in data.get("tracks", []):
+                if not track:
+                    continue
+                artists = ", ".join(a["name"] for a in track.get("artists", []) if a.get("name"))
+                album_obj = track.get("album", {})
+                duration_ms = track.get("duration_ms")
+                isrc = track.get("external_ids", {}).get("isrc")
+                artwork = album_obj.get("images", [{}])[0].get("url") if album_obj.get("images") else None
+                tracks.append(PlaylistTrack(
+                    title=track.get("name", "Unknown"),
+                    artist=artists or "Unknown",
+                    album=album_obj.get("name"),
+                    duration_seconds=duration_ms / 1000.0 if duration_ms else None,
+                    isrc=isrc,
+                    spotify_id=track.get("id"),
+                    artwork_url=artwork,
+                ))
+
+    logger.info("Embed fallback resolved: %s (%d tracks)", name, len(tracks))
+    return PlaylistInfo(name=name, track_count=len(tracks), tracks=tracks, platform="spotify")
 
 
 # --- Apple Music ---
