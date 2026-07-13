@@ -212,25 +212,21 @@ async def _spotify_embed_fallback(playlist_id: str, token: str) -> PlaylistInfo 
         logger.warning("Embed fallback: no track IDs found in page for %s", playlist_id)
         return PlaylistInfo(name=name, track_count=0, tracks=[], platform="spotify")
 
-    # Fetch metadata for each track via the API (tracks endpoint works)
+    # Fetch metadata for each track individually (batch endpoint blocked in Dev Mode)
     tracks: list[PlaylistTrack] = []
     async with aiohttp.ClientSession() as session:
-        # Batch fetch tracks (max 50 per request)
-        for i in range(0, len(track_ids), 50):
-            batch = track_ids[i:i + 50]
-            async with session.get(
-                "https://api.spotify.com/v1/tracks",
-                headers={"Authorization": f"Bearer {token}"},
-                params={"ids": ",".join(batch)},
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning("Batch track fetch failed: %d", resp.status)
-                    continue
-                data = await resp.json()
+        for track_id in track_ids:
+            try:
+                async with session.get(
+                    f"https://api.spotify.com/v1/tracks/{track_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status != 200:
+                        logger.warning("Track fetch failed for %s: %d", track_id, resp.status)
+                        continue
+                    track = await resp.json()
 
-            for track in data.get("tracks", []):
-                if not track:
-                    continue
                 artists = ", ".join(a["name"] for a in track.get("artists", []) if a.get("name"))
                 album_obj = track.get("album", {})
                 duration_ms = track.get("duration_ms")
@@ -245,6 +241,8 @@ async def _spotify_embed_fallback(playlist_id: str, token: str) -> PlaylistInfo 
                     spotify_id=track.get("id"),
                     artwork_url=artwork,
                 ))
+            except Exception as e:
+                logger.warning("Track fetch error for %s: %s", track_id, e)
 
     logger.info("Embed fallback resolved: %s (%d tracks)", name, len(tracks))
     return PlaylistInfo(name=name, track_count=len(tracks), tracks=tracks, platform="spotify")
