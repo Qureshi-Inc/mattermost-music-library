@@ -174,8 +174,8 @@ async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
         next_url = page.get("next")
 
     # If API returned name but no tracks, try embed fallback
-    if not tracks and total > 0:
-        logger.warning("Spotify API returned name but 0 tracks (total=%d), trying embed", total)
+    if not tracks:
+        logger.warning("Spotify API returned 0 tracks for '%s', trying embed fallback", name)
         fallback = await _spotify_embed_fallback(playlist_id, token)
         if fallback and fallback.tracks:
             return fallback
