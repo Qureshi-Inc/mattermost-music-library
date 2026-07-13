@@ -164,7 +164,7 @@ class SpotifyResolver(BaseResolver):
                 "explicit": data.get("explicit"),
                 "popularity": data.get("popularity"),
                 "preview_url": data.get("preview_url"),
-                "album_art": album_obj.get("images", [{}])[0].get("url")
+                "artwork_url": album_obj.get("images", [{}])[0].get("url")
                 if album_obj.get("images")
                 else None,
                 "release_date": album_obj.get("release_date"),
