@@ -45,6 +45,7 @@ class LibraryOrganizer:
         title: str,
         track_number: int | None = None,
         move: bool = True,
+        artwork_url: str | None = None,
     ) -> Path:
         """Organize a music file into the library hierarchy.
 
@@ -104,7 +105,38 @@ class LibraryOrganizer:
             shutil.copy2(str(source), str(dest_path))
             logger.info("Copied file to library", extra={"dest": str(dest_path)})
 
+        # Save cover.jpg for album-level artwork in Jellyfin
+        if artwork_url:
+            self._save_cover_art(dest_dir, artwork_url)
+
         return dest_path
+
+    def _save_cover_art(self, album_dir: Path, artwork_url: str) -> None:
+        """Download and save cover.jpg in the album folder if not already present."""
+        cover_path = album_dir / "cover.jpg"
+        if cover_path.exists():
+            return
+
+        try:
+            import httpx
+            # Upscale iTunes artwork
+            if "mzstatic.com" in artwork_url:
+                artwork_url = artwork_url.replace("100x100", "600x600").replace("60x60", "600x600")
+
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                resp = client.get(artwork_url)
+                if resp.status_code == 200 and len(resp.content) > 5000:
+                    cover_path.write_bytes(resp.content)
+                    logger.info("Saved cover.jpg", extra={"path": str(cover_path)})
+                elif "img.youtube.com" in artwork_url and "maxresdefault" in artwork_url:
+                    # Fallback to hqdefault
+                    fallback = artwork_url.replace("maxresdefault", "hqdefault")
+                    resp = client.get(fallback)
+                    if resp.status_code == 200 and len(resp.content) > 5000:
+                        cover_path.write_bytes(resp.content)
+                        logger.info("Saved cover.jpg (hqdefault)", extra={"path": str(cover_path)})
+        except Exception as e:
+            logger.warning("Failed to save cover art: %s", e)
 
     def _sanitize_filename(self, name: str) -> str:
         """Sanitize a string for use as a filename component.

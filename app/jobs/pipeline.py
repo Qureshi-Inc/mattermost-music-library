@@ -683,13 +683,24 @@ class JobPipeline:
             album = metadata.get("album") or "Unknown Album"
             title = metadata.get("title") or "Unknown Track"
 
+            extra = metadata.get("extra", {}) or {}
+            artwork_url = extra.get("artwork_url")
+
+            # YouTube thumbnail fallback
+            if not artwork_url:
+                import re
+                yt_match = re.search(r"(?:youtu\.be/|youtube\.com/watch\?v=)([A-Za-z0-9_-]+)", job.url or "")
+                if yt_match:
+                    artwork_url = f"https://img.youtube.com/vi/{yt_match.group(1)}/maxresdefault.jpg"
+
             final_path = self._organizer.organize(
                 source_path=file_path,
                 artist=artist,
                 album=album,
                 title=title,
-                track_number=None,  # Usually not available from single-track downloads
+                track_number=None,
                 move=True,
+                artwork_url=artwork_url,
             )
 
             # Update the job with the final file path info
