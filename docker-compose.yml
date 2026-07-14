@@ -20,7 +20,29 @@ services:
       - /media:/zurg:rslave
     restart: unless-stopped
 
+  whatsapp-worker:
+    build: ./whatsapp
+    env_file:
+      - .env
+    environment:
+      - WHATSAPP_ENABLED=${WHATSAPP_ENABLED:-true}
+      - WHATSAPP_GROUP_JID=${WHATSAPP_GROUP_JID}
+      - WHATSAPP_AUTH_ENCRYPTION_KEY=${WHATSAPP_AUTH_ENCRYPTION_KEY}
+      - MATTERMOST_URL=${MATTERMOST_URL:-https://mm.qureshi.io}
+      - MATTERMOST_TOKEN=${MATTERMOST_TOKEN}
+      - MATTERMOST_TEAM_NAME=${MATTERMOST_TEAM_NAME:-qureshi}
+      - SLAPSHARE_CHANNEL_ID=${SLAPSHARE_CHANNEL_ID:-o18rtx6ewifc8r1dnc3kp4xoic}
+      - BOT_USERNAME=${BOT_USERNAME:-slaptastic}
+      - DATABASE_PATH=/app/data/whatsapp-bridge.db
+      - AUTH_STATE_PATH=/app/data/auth-state
+    volumes:
+      - whatsapp_data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - music-importer
+
 volumes:
   music_data:
   db_data:
   jellyfin_config:
+  whatsapp_data:
