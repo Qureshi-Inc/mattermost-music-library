@@ -42,10 +42,25 @@
         }
     </script>
     <style>
-        ::-webkit-scrollbar { width: 6px; }
+        * { -webkit-tap-highlight-color: transparent; }
+        html { scroll-behavior: smooth; }
+        body {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+            overflow-x: hidden;
+        }
+        ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: #0a0a0f; }
         ::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #6d28d9; }
+
+        @media (max-width: 640px) {
+            .glass-card { padding: 1rem !important; }
+            .feed-scroll { -webkit-overflow-scrolling: touch; }
+            canvas#particles-canvas { display: none; }
+        }
 
         .glass-card {
             background: rgba(15, 15, 26, 0.7);
@@ -281,21 +296,21 @@
     <canvas id="particles-canvas"></canvas>
 
     <!-- Main Container -->
-    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
 
         <!-- Hero Section -->
-        <header class="text-center mb-16 reveal-section" data-delay="0">
-            <div class="inline-flex items-center gap-3 mb-6">
-                <span class="text-5xl crown-bounce">🎵</span>
-                <h1 class="text-6xl sm:text-7xl lg:text-8xl font-display font-bold gradient-text sparkle">Slapshare</h1>
-                <span class="text-5xl crown-bounce" style="animation-delay: -1s">🎵</span>
+        <header class="text-center mb-8 sm:mb-16 reveal-section" data-delay="0">
+            <div class="inline-flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <span class="text-3xl sm:text-5xl crown-bounce">🎵</span>
+                <h1 class="text-4xl sm:text-6xl lg:text-8xl font-display font-bold gradient-text sparkle">Slapshare</h1>
+                <span class="text-3xl sm:text-5xl crown-bounce" style="animation-delay: -1s">🎵</span>
             </div>
-            <p class="text-gray-400 text-xl font-light mb-8">Premium Music Analytics for the Squad</p>
+            <p class="text-gray-400 text-base sm:text-xl font-light mb-6 sm:mb-8">Premium Music Analytics for the Squad</p>
 
             <!-- Big Animated Counter -->
-            <div class="inline-flex items-baseline gap-2 mb-4">
-                <span class="text-7xl sm:text-8xl font-display font-black gradient-text counter-value" x-text="animatedTotal">0</span>
-                <span class="text-3xl text-gray-400 font-light">Songs & Counting</span>
+            <div class="inline-flex items-baseline gap-2 mb-4 flex-wrap justify-center">
+                <span class="text-5xl sm:text-7xl lg:text-8xl font-display font-black gradient-text counter-value" x-text="animatedTotal">0</span>
+                <span class="text-xl sm:text-3xl text-gray-400 font-light">Songs & Counting</span>
             </div>
             <div class="flex items-center justify-center gap-2 mt-4">
                 <span class="inline-block w-2 h-2 bg-green-500 rounded-full glow-pulse"></span>
@@ -554,7 +569,7 @@
                 <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
                     📈 Submissions Over Time
                 </h2>
-                <div class="relative h-64">
+                <div class="relative h-48 sm:h-64">
                     <canvas id="timelineChart"></canvas>
                 </div>
             </div>
@@ -564,7 +579,7 @@
                 <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
                     🍩 Platform Breakdown
                 </h2>
-                <div class="relative h-64">
+                <div class="relative h-48 sm:h-64">
                     <canvas id="genreChart"></canvas>
                 </div>
             </div>
@@ -576,7 +591,7 @@
                 📊 Activity Heatmap
                 <span class="text-xs text-gray-500 font-normal ml-2">Hour of day vs day of week</span>
             </h2>
-            <div id="heatmap-container" class="overflow-x-auto"></div>
+            <div id="heatmap-container" class="overflow-x-auto -mx-2 px-2"></div>
         </div>
 
         <!-- Genre Weather Map -->
