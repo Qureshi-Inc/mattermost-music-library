@@ -4,10 +4,13 @@ Public endpoints (no auth required) that provide aggregated statistics
 for the music leaderboard dashboard.
 """
 
+import asyncio
 import json
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+
+import boto3
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
