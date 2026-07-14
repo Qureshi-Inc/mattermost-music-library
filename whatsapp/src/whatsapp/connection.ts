@@ -59,7 +59,6 @@ export class WhatsAppConnection extends EventEmitter {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, this.logger),
       },
-      printQRInTerminal: true,
       logger: this.logger,
       generateHighQualityLinkPreview: false,
       syncFullHistory: false,
@@ -73,7 +72,15 @@ export class WhatsAppConnection extends EventEmitter {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        console.log('[whatsapp] QR code received - scan with WhatsApp to pair');
+        console.log('[whatsapp] QR code received - scan with WhatsApp to pair:');
+        console.log('');
+        // Render QR code in terminal
+        const qrcode = require('qrcode-terminal');
+        qrcode.generate(qr, { small: true }, (code: string) => {
+          console.log(code);
+        });
+        console.log('');
+        console.log('[whatsapp] Raw QR string:', qr);
         this.emit('qr', qr);
       }
 
