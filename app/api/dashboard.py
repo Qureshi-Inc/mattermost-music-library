@@ -1190,3 +1190,309 @@ Respond in EXACTLY this JSON format (no other text):
         vibe_user1=ai_result.get("vibe_user1", ""),
         vibe_user2=ai_result.get("vibe_user2", ""),
     )
+
+
+# --- AI Features ---
+
+class AIRecommendationsResponse(BaseModel):
+    username: str
+    recommendations: list[str]
+    reasoning: str
+
+
+class AIVibeCheckResponse(BaseModel):
+    vibe: str
+    mood_emoji: str
+    description: str
+
+
+class AIPlaylistNameResponse(BaseModel):
+    username: str
+    current_name: str
+    ai_name: str
+    tagline: str
+
+
+class AIDigestResponse(BaseModel):
+    digest: str
+    highlights: list[str]
+    vibe_shift: str
+
+
+@router.get("/ai/recommendations/{username}", response_model=AIRecommendationsResponse)
+async def get_ai_recommendations(username: str, db: DbSession) -> AIRecommendationsResponse:
+    """AI-powered song recommendations based on user's library."""
+    import asyncio
+    import re
+
+    user_id = None
+    for uid, name in USER_DISPLAY_NAMES.items():
+        if name == username:
+            user_id = uid
+            break
+
+    if not user_id:
+        return AIRecommendationsResponse(username=username, recommendations=[], reasoning="User not found.")
+
+    result = await db.execute(
+        select(Job.artist, Job.title, Job.album)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id == user_id, Job.artist.isnot(None))
+        .order_by(Job.created_at.desc())
+        .limit(20)
+    )
+    songs = [(r[0], r[1], r[2]) for r in result.all()]
+
+    if not songs:
+        return AIRecommendationsResponse(username=username, recommendations=[], reasoning="No songs to analyze yet.")
+
+    library = "\n".join(f"- {s[0]} - {s[1]}" for s in songs)
+
+    prompt = f"""You are a music curator for a friend group's shared library called Slapshare.
+
+{username}'s recent additions:
+{library}
+
+Based on their taste, suggest 5 songs they would LOVE but probably haven't heard. Be specific — real songs, real artists. Mix well-known gems they may have missed with deeper cuts.
+
+Respond in EXACTLY this JSON format:
+{{
+  "recommendations": ["Artist - Song Title", "Artist - Song Title", "Artist - Song Title", "Artist - Song Title", "Artist - Song Title"],
+  "reasoning": "<1 sentence explaining the vibe you picked up on>"
+}}"""
+
+    try:
+        def _call():
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 300,
+                    "temperature": 0.9,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(response["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        ai_result = json.loads(json_match.group()) if json_match else json.loads(result_text)
+    except Exception as e:
+        return AIRecommendationsResponse(username=username, recommendations=[], reasoning=f"AI unavailable: {str(e)[:50]}")
+
+    return AIRecommendationsResponse(
+        username=username,
+        recommendations=ai_result.get("recommendations", [])[:5],
+        reasoning=ai_result.get("reasoning", ""),
+    )
+
+
+@router.get("/ai/vibe-check", response_model=AIVibeCheckResponse)
+async def get_ai_vibe_check(db: DbSession) -> AIVibeCheckResponse:
+    """AI analyzes the entire library's current mood."""
+    import asyncio
+    import re
+
+    result = await db.execute(
+        select(Job.artist, Job.title)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.artist.isnot(None))
+        .order_by(Job.created_at.desc())
+        .limit(30)
+    )
+    songs = [f"{r[0]} - {r[1]}" for r in result.all()]
+
+    if not songs:
+        return AIVibeCheckResponse(vibe="Empty", mood_emoji="🤷", description="No songs yet!")
+
+    library = "\n".join(f"- {s}" for s in songs)
+
+    prompt = f"""Analyze the overall mood and vibe of this shared music library's recent additions:
+
+{library}
+
+Respond in EXACTLY this JSON format:
+{{
+  "vibe": "<3-5 word vibe label, e.g. 'Melancholic Late Night Soul'>",
+  "mood_emoji": "<single emoji that captures the mood>",
+  "description": "<1 sentence poetic description of how the squad is feeling based on these songs>"
+}}"""
+
+    try:
+        def _call():
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 200,
+                    "temperature": 0.8,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(response["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        ai_result = json.loads(json_match.group()) if json_match else json.loads(result_text)
+    except Exception as e:
+        return AIVibeCheckResponse(vibe="Unknown", mood_emoji="🎵", description=f"AI unavailable: {str(e)[:50]}")
+
+    return AIVibeCheckResponse(
+        vibe=ai_result.get("vibe", "Vibing"),
+        mood_emoji=ai_result.get("mood_emoji", "🎵"),
+        description=ai_result.get("description", ""),
+    )
+
+
+@router.get("/ai/playlist-name/{username}", response_model=AIPlaylistNameResponse)
+async def get_ai_playlist_name(username: str, db: DbSession) -> AIPlaylistNameResponse:
+    """AI generates a creative playlist name based on user's music."""
+    import asyncio
+    import re
+
+    user_id = None
+    for uid, name in USER_DISPLAY_NAMES.items():
+        if name == username:
+            user_id = uid
+            break
+
+    if not user_id:
+        return AIPlaylistNameResponse(username=username, current_name=f"{username}'s picks", ai_name=f"{username}'s picks", tagline="")
+
+    result = await db.execute(
+        select(Job.artist, Job.title)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id == user_id, Job.artist.isnot(None))
+        .limit(15)
+    )
+    songs = [f"{r[0]} - {r[1]}" for r in result.all()]
+
+    if not songs:
+        return AIPlaylistNameResponse(username=username, current_name=f"{username}'s picks", ai_name=f"{username}'s picks", tagline="Add more songs!")
+
+    library = "\n".join(f"- {s}" for s in songs)
+
+    prompt = f"""Based on this person's music taste, generate a creative, unique playlist name that captures their vibe. Not generic — make it specific to their actual taste.
+
+{username}'s music:
+{library}
+
+Respond in EXACTLY this JSON format:
+{{
+  "ai_name": "<creative playlist name, 2-4 words, catchy and specific>",
+  "tagline": "<short poetic tagline for the playlist, max 8 words>"
+}}"""
+
+    try:
+        def _call():
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 150,
+                    "temperature": 1.0,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(response["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        ai_result = json.loads(json_match.group()) if json_match else json.loads(result_text)
+    except Exception as e:
+        return AIPlaylistNameResponse(username=username, current_name=f"{username}'s picks", ai_name=f"{username}'s picks", tagline=f"AI unavailable")
+
+    return AIPlaylistNameResponse(
+        username=username,
+        current_name=f"{username}'s picks",
+        ai_name=ai_result.get("ai_name", f"{username}'s picks"),
+        tagline=ai_result.get("tagline", ""),
+    )
+
+
+@router.get("/ai/digest", response_model=AIDigestResponse)
+async def get_ai_digest(db: DbSession) -> AIDigestResponse:
+    """AI-generated weekly digest of the library's activity."""
+    import asyncio
+    import re
+
+    one_week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    result = await db.execute(
+        select(Job.artist, Job.title, Job.requester_user_id, Job.created_at)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.created_at >= one_week_ago)
+        .order_by(Job.created_at.desc())
+    )
+    rows = result.all()
+
+    if not rows:
+        return AIDigestResponse(digest="Quiet week — no new songs added.", highlights=[], vibe_shift="")
+
+    # Build context
+    user_songs = defaultdict(list)
+    for r in rows:
+        username = _get_display_name(r[2])
+        user_songs[username].append(f"{r[0]} - {r[1]}")
+
+    context_lines = []
+    for user, songs in user_songs.items():
+        context_lines.append(f"{user} added {len(songs)} songs: {', '.join(songs[:5])}")
+
+    context = "\n".join(context_lines)
+
+    prompt = f"""You are writing a fun weekly music digest for a friend group's shared library called Slapshare.
+
+This week's activity:
+{context}
+
+Total songs added this week: {len(rows)}
+
+Write a short, engaging weekly digest. Be specific about what people added. Celebrate the contributors.
+
+Respond in EXACTLY this JSON format:
+{{
+  "digest": "<2-3 sentence fun summary of the week's music activity. Name people and what they added. Celebratory tone.>",
+  "highlights": ["<highlight 1>", "<highlight 2>", "<highlight 3>"],
+  "vibe_shift": "<1 sentence about how the library's overall vibe shifted this week>"
+}}"""
+
+    try:
+        def _call():
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 300,
+                    "temperature": 0.8,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(response["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        ai_result = json.loads(json_match.group()) if json_match else json.loads(result_text)
+    except Exception as e:
+        return AIDigestResponse(digest=f"AI unavailable: {str(e)[:50]}", highlights=[], vibe_shift="")
+
+    return AIDigestResponse(
+        digest=ai_result.get("digest", ""),
+        highlights=ai_result.get("highlights", [])[:3],
+        vibe_shift=ai_result.get("vibe_shift", ""),
+    )
