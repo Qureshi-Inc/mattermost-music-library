@@ -3,10 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Slapshare - Music Leaderboard</title>
+    <title>Slapshare - Premium Music Analytics</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- D3.js -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <!-- Anime.js -->
+    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
+    <!-- GSAP + ScrollTrigger -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
@@ -31,34 +42,39 @@
         }
     </script>
     <style>
-        /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0a0a0f; }
         ::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #6d28d9; }
 
-        /* Glassmorphism card */
         .glass-card {
             background: rgba(15, 15, 26, 0.7);
             backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(139, 92, 246, 0.15);
             border-radius: 1rem;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .glass-card:hover {
             border-color: rgba(139, 92, 246, 0.35);
             box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+            transform: translateY(-2px);
         }
 
-        /* Gradient text */
         .gradient-text {
-            background: linear-gradient(135deg, #8b5cf6, #06b6d4, #f43f5e);
+            background: linear-gradient(135deg, #8b5cf6, #3b82f6, #ec4899);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
-        /* Pulse glow */
+        .gradient-text-gold {
+            background: linear-gradient(135deg, #f59e0b, #fbbf24, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
         .glow-pulse {
             animation: glowPulse 2s ease-in-out infinite;
         }
@@ -67,7 +83,14 @@
             50% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.6), 0 0 40px rgba(139, 92, 246, 0.3); }
         }
 
-        /* Fire animation */
+        .throne-glow {
+            animation: throneGlow 3s ease-in-out infinite;
+        }
+        @keyframes throneGlow {
+            0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.3), 0 0 30px rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.5), 0 0 60px rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.7); }
+        }
+
         .fire-glow {
             animation: fireGlow 1.5s ease-in-out infinite alternate;
         }
@@ -76,20 +99,14 @@
             100% { text-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 30px #f97316; }
         }
 
-        /* Slide in animation */
-        .slide-in {
-            animation: slideIn 0.6s ease-out forwards;
-            opacity: 0;
-            transform: translateY(30px);
+        .hot-item {
+            animation: hotPulse 2s ease-in-out infinite;
         }
-        @keyframes slideIn {
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes hotPulse {
+            0%, 100% { border-color: rgba(249, 115, 22, 0.3); }
+            50% { border-color: rgba(249, 115, 22, 0.8); box-shadow: 0 0 15px rgba(249, 115, 22, 0.3); }
         }
 
-        /* Stagger children */
-        .stagger > * { animation-delay: calc(var(--i, 0) * 0.1s); }
-
-        /* Crown bounce */
         .crown-bounce {
             animation: crownBounce 2s ease-in-out infinite;
         }
@@ -99,54 +116,14 @@
             75% { transform: translateY(-3px) rotate(5deg); }
         }
 
-        /* Floating music notes background */
-        .music-particles {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-            overflow: hidden;
-        }
-        .music-note {
-            position: absolute;
-            font-size: 1.5rem;
-            opacity: 0.08;
-            animation: floatUp linear infinite;
-        }
-        @keyframes floatUp {
-            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
-            10% { opacity: 0.08; }
-            90% { opacity: 0.08; }
-            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
-        }
-
-        /* Number counter animation */
-        .counter-animate {
-            transition: all 0.5s ease-out;
-        }
-
-        /* Hot item pulse border */
-        .hot-item {
-            animation: hotPulse 2s ease-in-out infinite;
-        }
-        @keyframes hotPulse {
-            0%, 100% { border-color: rgba(249, 115, 22, 0.3); }
-            50% { border-color: rgba(249, 115, 22, 0.8); box-shadow: 0 0 15px rgba(249, 115, 22, 0.3); }
-        }
-
-        /* Heatmap cell */
         .heatmap-cell {
             transition: all 0.2s ease;
         }
         .heatmap-cell:hover {
-            transform: scale(1.3);
+            transform: scale(1.4);
             z-index: 10;
         }
 
-        /* Badge shine */
         .badge-shine {
             position: relative;
             overflow: hidden;
@@ -158,126 +135,222 @@
             left: -50%;
             width: 200%;
             height: 200%;
-            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
-            animation: shine 3s ease-in-out infinite;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
+            animation: shine 4s ease-in-out infinite;
         }
         @keyframes shine {
             0%, 100% { transform: translateX(-100%) rotate(45deg); }
             50% { transform: translateX(100%) rotate(45deg); }
         }
 
-        /* Tab active indicator */
-        .tab-active {
-            position: relative;
-        }
-        .tab-active::after {
-            content: '';
-            position: absolute;
-            bottom: -2px;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, #8b5cf6, #06b6d4);
-            border-radius: 1px;
-        }
-
-        /* Smooth scrollbar for feed */
         .feed-scroll {
             scrollbar-width: thin;
             scrollbar-color: #4c1d95 transparent;
         }
 
-        /* Trend arrow animations */
-        .trend-up { color: #10b981; animation: trendUp 1s ease-in-out infinite; }
-        .trend-down { color: #ef4444; animation: trendDown 1s ease-in-out infinite; }
-        @keyframes trendUp {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-3px); }
+        #particles-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
         }
-        @keyframes trendDown {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(3px); }
+
+        .bg-orbs {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.15;
+            animation: orbFloat 20s ease-in-out infinite;
+        }
+        .orb-1 {
+            width: 600px; height: 600px;
+            background: #8b5cf6;
+            top: -200px; left: -200px;
+            animation-delay: 0s;
+        }
+        .orb-2 {
+            width: 500px; height: 500px;
+            background: #3b82f6;
+            top: 50%; right: -150px;
+            animation-delay: -7s;
+        }
+        .orb-3 {
+            width: 400px; height: 400px;
+            background: #ec4899;
+            bottom: -100px; left: 30%;
+            animation-delay: -14s;
+        }
+        @keyframes orbFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            25% { transform: translate(50px, -30px) scale(1.1); }
+            50% { transform: translate(-30px, 50px) scale(0.9); }
+            75% { transform: translate(30px, 30px) scale(1.05); }
+        }
+
+        .reveal-section {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .reveal-section.revealed {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .skeleton {
+            background: linear-gradient(90deg, rgba(139, 92, 246, 0.05) 25%, rgba(139, 92, 246, 0.1) 50%, rgba(139, 92, 246, 0.05) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 0.5rem;
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .progress-fill {
+            transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .gold-card {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(251, 191, 36, 0.05));
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 1rem;
+            transition: all 0.3s ease;
+        }
+        .gold-card:hover {
+            border-color: rgba(245, 158, 11, 0.6);
+            box-shadow: 0 0 30px rgba(245, 158, 11, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .sparkle {
+            position: relative;
+        }
+        .sparkle::before, .sparkle::after {
+            content: '';
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #fbbf24;
+            animation: sparkleAnim 2s ease-in-out infinite;
+        }
+        .sparkle::before { top: -5px; right: -5px; animation-delay: 0s; }
+        .sparkle::after { bottom: -5px; left: -5px; animation-delay: 1s; }
+        @keyframes sparkleAnim {
+            0%, 100% { opacity: 0; transform: scale(0); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        .dna-container {
+            perspective: 800px;
+        }
+        .dna-strand {
+            transform-style: preserve-3d;
+            animation: dnaRotate 8s linear infinite;
+        }
+        @keyframes dnaRotate {
+            from { transform: rotateY(0deg); }
+            to { transform: rotateY(360deg); }
         }
     </style>
 </head>
 <body class="bg-dark-900 text-white font-sans min-h-screen" x-data="dashboard()" x-init="init()">
-    <!-- Floating Music Notes Background -->
-    <div class="music-particles" id="particles"></div>
+    <!-- Animated Background Orbs -->
+    <div class="bg-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <!-- Particles Canvas (Music Notes) -->
+    <canvas id="particles-canvas"></canvas>
 
     <!-- Main Container -->
     <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        <!-- Header -->
-        <header class="text-center mb-12 slide-in" style="animation-delay: 0s">
-            <div class="inline-flex items-center gap-3 mb-4">
-                <span class="text-4xl">🎵</span>
-                <h1 class="text-5xl sm:text-6xl font-display font-bold gradient-text">Slapshare</h1>
-                <span class="text-4xl">🎵</span>
+        <!-- Hero Section -->
+        <header class="text-center mb-16 reveal-section" data-delay="0">
+            <div class="inline-flex items-center gap-3 mb-6">
+                <span class="text-5xl crown-bounce">🎵</span>
+                <h1 class="text-6xl sm:text-7xl lg:text-8xl font-display font-bold gradient-text sparkle">Slapshare</h1>
+                <span class="text-5xl crown-bounce" style="animation-delay: -1s">🎵</span>
             </div>
-            <p class="text-gray-400 text-lg font-light">The ultimate music leaderboard for the squad</p>
-            <div class="mt-4 flex items-center justify-center gap-2">
+            <p class="text-gray-400 text-xl font-light mb-8">Premium Music Analytics for the Squad</p>
+
+            <!-- Big Animated Counter -->
+            <div class="inline-flex items-baseline gap-2 mb-4">
+                <span class="text-7xl sm:text-8xl font-display font-black gradient-text counter-value" x-text="animatedTotal">0</span>
+                <span class="text-3xl text-gray-400 font-light">Songs & Counting</span>
+            </div>
+            <div class="flex items-center justify-center gap-2 mt-4">
                 <span class="inline-block w-2 h-2 bg-green-500 rounded-full glow-pulse"></span>
-                <span class="text-sm text-gray-500">Live &mdash; Updated in real time</span>
+                <span class="text-sm text-gray-500">Live &mdash; <span x-text="stats.total_contributors || 0">0</span> contributors sharing the vibes</span>
             </div>
         </header>
 
-        <!-- Live Counter Banner -->
-        <div class="glass-card p-6 mb-8 text-center slide-in" style="animation-delay: 0.1s">
-            <div class="flex items-center justify-center gap-4 flex-wrap">
-                <div class="text-center">
-                    <div class="text-5xl font-display font-bold gradient-text" x-text="animatedTotal">0</div>
-                    <div class="text-gray-400 text-sm mt-1">Total Slaps in the Library</div>
-                </div>
-                <div class="hidden sm:block w-px h-12 bg-gradient-to-b from-transparent via-purple-500/50 to-transparent"></div>
-                <div class="text-center">
-                    <div class="text-3xl font-display font-bold text-cyan-400" x-text="stats.total_contributors || 0">0</div>
-                    <div class="text-gray-400 text-sm mt-1">Contributors</div>
-                </div>
-                <div class="hidden sm:block w-px h-12 bg-gradient-to-b from-transparent via-purple-500/50 to-transparent"></div>
-                <div class="text-center">
-                    <div class="text-3xl font-display font-bold text-pink-400" x-text="stats.this_week_additions || 0">0</div>
-                    <div class="text-gray-400 text-sm mt-1">This Week 🔥</div>
-                </div>
-                <div class="hidden sm:block w-px h-12 bg-gradient-to-b from-transparent via-purple-500/50 to-transparent"></div>
-                <div class="text-center">
-                    <div class="text-3xl font-display font-bold text-amber-400" x-text="stats.total_artists || 0">0</div>
-                    <div class="text-gray-400 text-sm mt-1">Unique Artists</div>
-                </div>
-            </div>
-        </div>
-
         <!-- Did You Know? Rotating Facts -->
-        <div class="glass-card p-4 mb-8 slide-in" style="animation-delay: 0.15s"
-             x-show="facts.length > 0">
-            <div class="flex items-center gap-3">
-                <span class="text-2xl">💡</span>
-                <div>
+        <div class="glass-card p-5 mb-10 reveal-section" data-delay="100" x-show="facts.length > 0">
+            <div class="flex items-center gap-4">
+                <span class="text-3xl">💡</span>
+                <div class="flex-1">
                     <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">Did You Know?</span>
-                    <p class="text-gray-300 text-sm mt-1" x-text="currentFact"></p>
+                    <p class="text-gray-300 mt-1" x-text="currentFact" style="min-height: 1.5em"></p>
                 </div>
+                <button @click="nextFact()" class="text-purple-400 hover:text-purple-300 transition-colors text-sm">
+                    Next &rarr;
+                </button>
             </div>
         </div>
 
-        <!-- Hot Right Now (Last 24h) -->
-        <div class="mb-8 slide-in" style="animation-delay: 0.2s" x-show="hotItems.length > 0">
-            <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
+        <!-- The Throne -->
+        <div class="mb-10 reveal-section" data-delay="200" x-show="leaderboard.length > 0">
+            <h2 class="text-2xl font-display font-bold mb-6 text-center gradient-text-gold">👑 The Throne</h2>
+            <div class="max-w-md mx-auto glass-card throne-glow p-8 text-center">
+                <div class="crown-bounce text-5xl mb-4">👑</div>
+                <img :src="'https://api.dicebear.com/7.x/thumbs/svg?seed=' + (leaderboard[0]?.username || 'king') + '&backgroundColor=transparent'"
+                     class="w-20 h-20 rounded-full mx-auto mb-4 ring-4 ring-amber-500/50" alt="throne avatar">
+                <h3 class="text-2xl font-display font-bold" x-text="leaderboard[0]?.username || '???'" :style="'color:' + (leaderboard[0]?.color || '#f59e0b')"></h3>
+                <p class="text-amber-400 text-lg mt-2"><span class="font-bold text-3xl" x-text="leaderboard[0]?.song_count || 0"></span> slaps</p>
+                <p class="text-gray-500 text-sm mt-2">Reigning champion of the library</p>
+            </div>
+        </div>
+
+        <!-- Hot Right Now -->
+        <div class="mb-10 reveal-section" data-delay="300" x-show="hotItems.length > 0">
+            <h2 class="text-2xl font-display font-bold mb-6 flex items-center gap-2">
                 <span class="fire-glow">🔥</span> Hot Right Now
-                <span class="text-xs text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded-full">Last 24h</span>
+                <span class="text-xs text-orange-400 bg-orange-400/10 px-3 py-1 rounded-full">Last 24h</span>
             </h2>
             <div class="flex gap-4 overflow-x-auto pb-4 feed-scroll">
-                <template x-for="item in hotItems" :key="item.created_at">
-                    <div class="glass-card hot-item border-orange-500/30 p-4 min-w-[250px] flex-shrink-0">
+                <template x-for="item in hotItems" :key="item.created_at + item.title">
+                    <div class="glass-card hot-item border-orange-500/30 p-5 min-w-[280px] flex-shrink-0">
                         <div class="flex items-start gap-3">
-                            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                            <div class="w-12 h-12 rounded-lg flex items-center justify-center text-xl"
                                  :style="'background:' + item.color + '22; border: 1px solid ' + item.color">
                                 🎵
                             </div>
                             <div class="flex-1 min-w-0">
-                                <p class="font-semibold text-sm truncate" x-text="item.title || 'Unknown Track'"></p>
-                                <p class="text-xs text-gray-400 truncate" x-text="item.artist || 'Unknown Artist'"></p>
-                                <p class="text-xs mt-1">
-                                    <span class="px-1.5 py-0.5 rounded text-xs" :style="'background:' + item.color + '22; color:' + item.color" x-text="item.username"></span>
-                                </p>
+                                <p class="font-semibold truncate" x-text="item.title || 'Unknown Track'"></p>
+                                <p class="text-sm text-gray-400 truncate" x-text="item.artist || 'Unknown Artist'"></p>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <span class="px-2 py-0.5 rounded text-xs" :style="'background:' + item.color + '22; color:' + item.color" x-text="item.username"></span>
+                                    <span class="text-xs text-gray-500" x-text="timeAgo(item.created_at)"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -285,910 +358,851 @@
             </div>
         </div>
 
-        <!-- Main Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Main Grid: Leaderboard + Audio Aura -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
 
-            <!-- Leaderboard (takes 2 cols) -->
-            <div class="lg:col-span-2 glass-card p-6 slide-in" style="animation-delay: 0.3s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
+            <!-- Leaderboard -->
+            <div class="lg:col-span-2 glass-card p-6 reveal-section" data-delay="400">
+                <h2 class="text-2xl font-display font-bold mb-6 flex items-center gap-2">
                     🏆 Leaderboard
                 </h2>
                 <div class="space-y-3">
                     <template x-for="(entry, index) in leaderboard" :key="entry.username">
-                        <div class="flex items-center gap-4 p-3 rounded-xl transition-all hover:bg-white/5 cursor-pointer"
-                             :class="index === 0 ? 'bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/20' : ''"
-                             @click="showUserProfile(entry.username)">
+                        <div class="flex items-center gap-4 p-4 rounded-xl transition-all hover:bg-white/5"
+                             :class="index === 0 ? 'bg-gradient-to-r from-amber-500/10 to-transparent border border-amber-500/20' : index === 1 ? 'bg-gradient-to-r from-gray-400/5 to-transparent' : index === 2 ? 'bg-gradient-to-r from-amber-700/5 to-transparent' : ''">
                             <!-- Rank -->
-                            <div class="w-8 text-center">
-                                <span x-show="index === 0" class="text-2xl crown-bounce inline-block">👑</span>
-                                <span x-show="index === 1" class="text-lg">🥈</span>
-                                <span x-show="index === 2" class="text-lg">🥉</span>
-                                <span x-show="index > 2" class="text-gray-500 font-bold" x-text="index + 1"></span>
+                            <div class="w-8 text-center flex-shrink-0">
+                                <span x-show="index === 0" class="text-2xl crown-bounce">👑</span>
+                                <span x-show="index === 1" class="text-xl">🥈</span>
+                                <span x-show="index === 2" class="text-xl">🥉</span>
+                                <span x-show="index > 2" class="text-gray-500 font-bold" x-text="entry.rank"></span>
                             </div>
                             <!-- Avatar -->
-                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm uppercase"
-                                 :style="'background:' + entry.color + '33; color:' + entry.color; border: '2px solid ' + entry.color">
-                                <span x-text="entry.username.charAt(0)"></span>
-                            </div>
-                            <!-- Name & Stats -->
-                            <div class="flex-1">
+                            <img :src="'https://api.dicebear.com/7.x/thumbs/svg?seed=' + entry.username + '&backgroundColor=transparent'"
+                                 class="w-10 h-10 rounded-full ring-2" :style="'--tw-ring-color:' + entry.color" alt="avatar">
+                            <!-- Info -->
+                            <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2">
-                                    <span class="font-semibold" x-text="entry.username"></span>
-                                    <span x-show="index === 0" class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">Top Slapper</span>
+                                    <span class="font-semibold" :style="'color:' + entry.color" x-text="entry.username"></span>
                                 </div>
-                                <div class="text-xs text-gray-400" x-text="'Last added: ' + formatTimeAgo(entry.latest_addition)"></div>
+                                <!-- Progress bar -->
+                                <div class="mt-1 h-2 bg-dark-700 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full progress-fill" :style="'width:' + (entry.song_count / (leaderboard[0]?.song_count || 1) * 100) + '%; background:' + entry.color"></div>
+                                </div>
                             </div>
-                            <!-- Song Count -->
-                            <div class="text-right">
-                                <div class="text-2xl font-bold font-display" :style="'color:' + entry.color" x-text="entry.song_count"></div>
-                                <div class="text-xs text-gray-500">songs</div>
+                            <!-- Count -->
+                            <div class="text-right flex-shrink-0">
+                                <span class="text-xl font-bold" :style="'color:' + entry.color" x-text="entry.song_count"></span>
+                                <p class="text-xs text-gray-500">slaps</p>
                             </div>
-                            <!-- Progress bar -->
-                            <div class="hidden sm:block w-24">
-                                <div class="h-2 bg-dark-700 rounded-full overflow-hidden">
-                                    <div class="h-full rounded-full transition-all duration-1000"
-                                         :style="'width:' + (entry.song_count / (leaderboard[0]?.song_count || 1) * 100) + '%; background:' + entry.color">
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Audio Aura + Personality Cards -->
+            <div class="space-y-6">
+                <!-- Audio Aura -->
+                <div class="glass-card p-6 reveal-section" data-delay="450">
+                    <h2 class="text-lg font-display font-bold mb-4 flex items-center gap-2">
+                        🌈 Audio Aura
+                    </h2>
+                    <div class="space-y-3">
+                        <template x-for="card in personalities" :key="card.username">
+                            <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-all">
+                                <div class="w-8 h-8 rounded-full" :style="'background: linear-gradient(135deg, ' + card.color + ', ' + getAuraColor(card.dominant_platform) + ')'"></div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium truncate" x-text="card.username"></p>
+                                    <p class="text-xs text-gray-500" x-text="card.personality"></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Streak Tracker -->
+                <div class="glass-card p-6 reveal-section" data-delay="500">
+                    <h2 class="text-lg font-display font-bold mb-4 flex items-center gap-2">
+                        🔥 Streak Tracker
+                    </h2>
+                    <div class="space-y-3">
+                        <template x-for="streak in streaks" :key="streak.username">
+                            <div class="flex items-center gap-3 p-2 rounded-lg">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" :style="'background:' + streak.color + '22; color:' + streak.color">
+                                    <span x-text="streak.longest_streak"></span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium" :style="'color:' + streak.color" x-text="streak.username"></p>
+                                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                                        <span>Best: <span x-text="streak.longest_streak"></span>d</span>
+                                        <span x-show="streak.is_active" class="text-orange-400">🔥 Active: <span x-text="streak.current_streak"></span>d</span>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </template>
-                </div>
-            </div>
-
-            <!-- Stats Cards -->
-            <div class="space-y-4 slide-in" style="animation-delay: 0.4s">
-                <!-- Top Artist Card -->
-                <div class="glass-card p-5">
-                    <div class="flex items-center gap-3 mb-2">
-                        <span class="text-2xl">🎤</span>
-                        <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">Most Submitted Artist</span>
-                    </div>
-                    <p class="text-lg font-bold truncate" x-text="stats.top_artist || 'Loading...'"></p>
-                </div>
-
-                <!-- Most Active Day -->
-                <div class="glass-card p-5">
-                    <div class="flex items-center gap-3 mb-2">
-                        <span class="text-2xl">📅</span>
-                        <span class="text-xs text-cyan-400 font-semibold uppercase tracking-wider">Most Active Day</span>
-                    </div>
-                    <p class="text-lg font-bold" x-text="stats.most_active_day || 'Loading...'"></p>
-                </div>
-
-                <!-- Peak Hour -->
-                <div class="glass-card p-5">
-                    <div class="flex items-center gap-3 mb-2">
-                        <span class="text-2xl">⏰</span>
-                        <span class="text-xs text-pink-400 font-semibold uppercase tracking-wider">Peak Hour</span>
-                    </div>
-                    <p class="text-lg font-bold" x-text="stats.peak_hour !== null ? formatHour(stats.peak_hour) : 'Loading...'"></p>
-                </div>
-
-                <!-- Longest Streak -->
-                <div class="glass-card p-5">
-                    <div class="flex items-center gap-3 mb-2">
-                        <span class="text-2xl">🔥</span>
-                        <span class="text-xs text-amber-400 font-semibold uppercase tracking-wider">Longest Streak</span>
-                    </div>
-                    <p class="text-lg font-bold">
-                        <span x-text="stats.longest_streak_days || 0"></span> days
-                        <span class="text-sm text-gray-400" x-text="'by ' + (stats.longest_streak_user || '...')"></span>
-                    </p>
-                </div>
-
-                <!-- Discovery Score (unique artists introduced) -->
-                <div class="glass-card p-5">
-                    <div class="flex items-center gap-3 mb-2">
-                        <span class="text-2xl">🔍</span>
-                        <span class="text-xs text-emerald-400 font-semibold uppercase tracking-wider">Top Discoverer</span>
-                    </div>
-                    <p class="text-lg font-bold" x-text="topDiscoverer"></p>
-                    <p class="text-xs text-gray-400">Most unique artists introduced</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Second Row: Source Breakdown + Timeline -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <!-- Source Breakdown Chart -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 0.5s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    📊 Source Breakdown
-                </h2>
-                <div class="flex items-center gap-8">
-                    <div class="w-48 h-48 relative">
-                        <canvas id="genreChart"></canvas>
-                    </div>
-                    <div class="flex-1 space-y-3">
-                        <template x-for="genre in genres" :key="genre.name">
-                            <div class="flex items-center gap-3">
-                                <div class="w-3 h-3 rounded-full" :style="'background:' + getGenreColor(genre.name)"></div>
-                                <span class="text-sm flex-1" x-text="genre.name"></span>
-                                <span class="text-sm font-bold" x-text="genre.count"></span>
-                                <span class="text-xs text-gray-500" x-text="genre.percentage + '%'"></span>
-                            </div>
                         </template>
                     </div>
                 </div>
             </div>
+        </div>
 
+        <!-- Taste DNA / Head-to-Head Section -->
+        <div class="glass-card p-6 mb-10 reveal-section" data-delay="550">
+            <h2 class="text-2xl font-display font-bold mb-6 flex items-center gap-2">
+                🧬 Taste DNA &mdash; Head-to-Head
+            </h2>
+            <div class="flex flex-wrap items-center gap-4 mb-6">
+                <select x-model="h2hUser1" @change="loadHeadToHead()"
+                        class="bg-dark-700 border border-purple-500/30 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-purple-500">
+                    <option value="">Select User 1</option>
+                    <template x-for="entry in leaderboard" :key="'h2h1-' + entry.username">
+                        <option :value="entry.username" x-text="entry.username"></option>
+                    </template>
+                </select>
+                <span class="text-2xl">⚔️</span>
+                <select x-model="h2hUser2" @change="loadHeadToHead()"
+                        class="bg-dark-700 border border-purple-500/30 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-purple-500">
+                    <option value="">Select User 2</option>
+                    <template x-for="entry in leaderboard" :key="'h2h2-' + entry.username">
+                        <option :value="entry.username" x-text="entry.username"></option>
+                    </template>
+                </select>
+            </div>
+
+            <!-- Head to Head Results -->
+            <div x-show="h2hData" class="space-y-4">
+                <!-- Songs comparison -->
+                <div class="grid grid-cols-3 gap-4 items-center">
+                    <div class="text-right">
+                        <span class="text-2xl font-bold" :style="'color:' + (h2hData?.user1_color || '#fff')" x-text="h2hData?.user1_songs || 0"></span>
+                        <p class="text-xs text-gray-500">songs</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="h-3 bg-dark-700 rounded-full overflow-hidden flex">
+                            <div class="h-full transition-all duration-1000" :style="'width:' + (h2hData ? h2hData.user1_songs / Math.max(h2hData.user1_songs + h2hData.user2_songs, 1) * 100 : 50) + '%; background:' + (h2hData?.user1_color || '#8b5cf6')"></div>
+                            <div class="h-full transition-all duration-1000" :style="'width:' + (h2hData ? h2hData.user2_songs / Math.max(h2hData.user1_songs + h2hData.user2_songs, 1) * 100 : 50) + '%; background:' + (h2hData?.user2_color || '#3b82f6')"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Songs</p>
+                    </div>
+                    <div class="text-left">
+                        <span class="text-2xl font-bold" :style="'color:' + (h2hData?.user2_color || '#fff')" x-text="h2hData?.user2_songs || 0"></span>
+                        <p class="text-xs text-gray-500">songs</p>
+                    </div>
+                </div>
+
+                <!-- Artists comparison -->
+                <div class="grid grid-cols-3 gap-4 items-center">
+                    <div class="text-right">
+                        <span class="text-xl font-bold" :style="'color:' + (h2hData?.user1_color || '#fff')" x-text="h2hData?.user1_artists || 0"></span>
+                        <p class="text-xs text-gray-500">artists</p>
+                    </div>
+                    <div class="text-center">
+                        <div class="h-3 bg-dark-700 rounded-full overflow-hidden flex">
+                            <div class="h-full transition-all duration-1000" :style="'width:' + (h2hData ? h2hData.user1_artists / Math.max(h2hData.user1_artists + h2hData.user2_artists, 1) * 100 : 50) + '%; background:' + (h2hData?.user1_color || '#8b5cf6')"></div>
+                            <div class="h-full transition-all duration-1000" :style="'width:' + (h2hData ? h2hData.user2_artists / Math.max(h2hData.user1_artists + h2hData.user2_artists, 1) * 100 : 50) + '%; background:' + (h2hData?.user2_color || '#3b82f6')"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Artists</p>
+                    </div>
+                    <div class="text-left">
+                        <span class="text-xl font-bold" :style="'color:' + (h2hData?.user2_color || '#fff')" x-text="h2hData?.user2_artists || 0"></span>
+                        <p class="text-xs text-gray-500">artists</p>
+                    </div>
+                </div>
+
+                <!-- Shared artists (DNA overlap) -->
+                <div x-show="h2hData?.shared_artists?.length > 0" class="mt-4">
+                    <p class="text-sm text-gray-400 mb-2">🧬 Shared DNA (<span x-text="h2hData?.shared_artists?.length || 0"></span> artists in common)</p>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="artist in (h2hData?.shared_artists || [])" :key="artist">
+                            <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30" x-text="artist"></span>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Unique artists per user -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div x-show="h2hData?.user1_unique_artists?.length > 0">
+                        <p class="text-xs text-gray-500 mb-2">Only <span :style="'color:' + (h2hData?.user1_color || '#fff')" x-text="h2hData?.user1"></span> has:</p>
+                        <div class="flex flex-wrap gap-1">
+                            <template x-for="artist in (h2hData?.user1_unique_artists || []).slice(0, 5)" :key="'u1-' + artist">
+                                <span class="px-2 py-0.5 rounded text-xs bg-dark-700 text-gray-400" x-text="artist"></span>
+                            </template>
+                        </div>
+                    </div>
+                    <div x-show="h2hData?.user2_unique_artists?.length > 0">
+                        <p class="text-xs text-gray-500 mb-2">Only <span :style="'color:' + (h2hData?.user2_color || '#fff')" x-text="h2hData?.user2"></span> has:</p>
+                        <div class="flex flex-wrap gap-1">
+                            <template x-for="artist in (h2hData?.user2_unique_artists || []).slice(0, 5)" :key="'u2-' + artist">
+                                <span class="px-2 py-0.5 rounded text-xs bg-dark-700 text-gray-400" x-text="artist"></span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div x-show="!h2hData" class="text-center text-gray-500 py-8">
+                <div class="dna-container inline-block mb-4">
+                    <div class="text-4xl dna-strand">🧬</div>
+                </div>
+                <p>Select two users above to see their taste DNA comparison</p>
+            </div>
+        </div>
+
+        <!-- Charts Row: Timeline + Genre Donut -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
             <!-- Timeline Chart -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 0.6s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    📈 Submission Timeline
+            <div class="glass-card p-6 reveal-section" data-delay="600">
+                <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
+                    📈 Submissions Over Time
                 </h2>
-                <div class="h-48">
+                <div class="relative h-64">
                     <canvas id="timelineChart"></canvas>
                 </div>
             </div>
+
+            <!-- Genre Donut -->
+            <div class="glass-card p-6 reveal-section" data-delay="650">
+                <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
+                    🍩 Platform Breakdown
+                </h2>
+                <div class="relative h-64">
+                    <canvas id="genreChart"></canvas>
+                </div>
+            </div>
         </div>
 
-        <!-- Third Row: Top Artists + Activity Feed -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <!-- Top Artists -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 0.7s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    🎤 Top Artists
-                </h2>
-                <div class="space-y-3 max-h-96 overflow-y-auto feed-scroll">
-                    <template x-for="(artist, index) in artists" :key="artist.name">
-                        <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-all">
-                            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-                                 :class="index < 3 ? 'bg-gradient-to-br from-purple-500/30 to-pink-500/30' : 'bg-dark-600'">
-                                <span x-text="index + 1"></span>
+        <!-- Activity Heatmap -->
+        <div class="glass-card p-6 mb-10 reveal-section" data-delay="700">
+            <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
+                📊 Activity Heatmap
+                <span class="text-xs text-gray-500 font-normal ml-2">Hour of day vs day of week</span>
+            </h2>
+            <div id="heatmap-container" class="overflow-x-auto"></div>
+        </div>
+
+        <!-- Genre Weather Map -->
+        <div class="glass-card p-6 mb-10 reveal-section" data-delay="750">
+            <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
+                🌤️ Genre Weather Map
+                <span class="text-xs text-gray-500 font-normal ml-2">More songs = hotter</span>
+            </h2>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <template x-for="genre in genres" :key="genre.name">
+                    <div class="glass-card p-4 text-center hover:scale-105 transition-transform">
+                        <div class="text-3xl mb-2" x-text="getWeatherIcon(genre.count, genreMaxCount)"></div>
+                        <p class="font-semibold text-sm" x-text="genre.name"></p>
+                        <p class="text-lg font-bold" :class="getWeatherTempClass(genre.count, genreMaxCount)" x-text="getWeatherTemp(genre.count, genreMaxCount) + '°'"></p>
+                        <p class="text-xs text-gray-500" x-text="genre.count + ' songs'"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Top Artists -->
+        <div class="glass-card p-6 mb-10 reveal-section" data-delay="800">
+            <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
+                🎤 Top Artists
+            </h2>
+            <div class="space-y-3">
+                <template x-for="(artist, i) in artists" :key="artist.name">
+                    <div class="flex items-center gap-4">
+                        <span class="text-gray-500 text-sm w-6 text-right" x-text="i + 1"></span>
+                        <img :src="'https://api.dicebear.com/7.x/shapes/svg?seed=' + encodeURIComponent(artist.name) + '&backgroundColor=transparent'"
+                             class="w-10 h-10 rounded-lg" alt="artist">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium truncate" x-text="artist.name"></p>
+                            <p class="text-xs text-gray-500 truncate" x-text="artist.latest_album ? 'Latest: ' + artist.latest_album : ''"></p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-32 h-2 bg-dark-700 rounded-full overflow-hidden hidden sm:block">
+                                <div class="h-full rounded-full bg-gradient-to-r from-purple-500 to-blue-500 progress-fill"
+                                     :style="'width:' + (artist.count / (artists[0]?.count || 1) * 100) + '%'"></div>
                             </div>
+                            <span class="text-sm font-bold text-purple-400 w-8 text-right" x-text="artist.count"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Achievements Grid -->
+        <div class="glass-card p-6 mb-10 reveal-section" data-delay="850">
+            <h2 class="text-2xl font-display font-bold mb-6 flex items-center gap-2">
+                🏅 Achievements
+            </h2>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <template x-for="achievement in achievements" :key="achievement.id">
+                    <div class="relative rounded-xl p-4 text-center transition-all cursor-default"
+                         :class="achievement.unlocked ? 'glass-card badge-shine' : 'bg-dark-800/50 border border-gray-800 opacity-50 rounded-xl'"
+                         :title="achievement.description + (achievement.unlocked ? ' - Unlocked by: ' + achievement.unlocked_by.join(', ') : ' - LOCKED')">
+                        <div class="text-3xl mb-2" :class="achievement.unlocked ? '' : 'grayscale opacity-50'" x-text="achievement.emoji"></div>
+                        <p class="text-xs font-semibold" :class="achievement.unlocked ? 'text-white' : 'text-gray-600'" x-text="achievement.name"></p>
+                        <p class="text-xs text-gray-500 mt-1 truncate" x-text="achievement.unlocked ? achievement.unlocked_by.join(', ') : 'Locked'"></p>
+                        <div x-show="!achievement.unlocked" class="absolute inset-0 flex items-center justify-center rounded-xl">
+                            <span class="text-2xl opacity-30">🔒</span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Hipster Index + Personality Cards Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+            <!-- Hipster Index -->
+            <div class="glass-card p-6 reveal-section" data-delay="900">
+                <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
+                    🎩 Hipster Index
+                    <span class="text-xs text-gray-500 font-normal">Lower score = more obscure taste</span>
+                </h2>
+                <div class="space-y-3">
+                    <template x-for="(hipster, i) in hipsters" :key="hipster.username">
+                        <div class="flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition-all">
+                            <span class="text-lg" x-text="i === 0 ? '🎩' : i === 1 ? '🕶️' : '🎧'"></span>
+                            <img :src="'https://api.dicebear.com/7.x/thumbs/svg?seed=' + hipster.username + '&backgroundColor=transparent'"
+                                 class="w-8 h-8 rounded-full" alt="avatar">
                             <div class="flex-1 min-w-0">
-                                <p class="font-medium text-sm truncate" x-text="artist.name"></p>
-                                <p class="text-xs text-gray-500 truncate" x-text="artist.latest_album || 'Various albums'"></p>
+                                <p class="text-sm font-medium" :style="'color:' + hipster.color" x-text="hipster.username"></p>
+                                <p class="text-xs text-gray-500"><span x-text="hipster.unique_artists"></span> unique artists</p>
                             </div>
-                            <div class="flex items-center gap-1">
-                                <span class="text-sm font-bold text-purple-400" x-text="artist.count"></span>
-                                <span class="text-xs text-gray-500">plays</span>
+                            <div class="text-right">
+                                <span class="text-sm font-bold" :class="hipster.hipster_score <= 2 ? 'text-purple-400' : hipster.hipster_score <= 3 ? 'text-blue-400' : 'text-gray-400'" x-text="hipster.hipster_score.toFixed(1)"></span>
+                                <p class="text-xs text-gray-600">score</p>
                             </div>
                         </div>
                     </template>
                 </div>
             </div>
 
-            <!-- Recent Activity Feed -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 0.8s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    ⚡ Recent Activity
+            <!-- Monthly Personality Cards -->
+            <div class="glass-card p-6 reveal-section" data-delay="950">
+                <h2 class="text-xl font-display font-bold mb-4 flex items-center gap-2">
+                    🎭 Personality Cards
                 </h2>
-                <div class="space-y-3 max-h-96 overflow-y-auto feed-scroll">
-                    <template x-for="item in recent" :key="item.created_at + item.title">
-                        <div class="flex items-start gap-3 p-3 rounded-lg hover:bg-white/5 transition-all group">
-                            <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                                 :style="'background: linear-gradient(135deg, ' + item.color + '22, ' + item.color + '44)'">
-                                <span x-text="getPlatformEmoji(item.source_platform)"></span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <template x-for="card in personalities" :key="'p-' + card.username">
+                        <div class="rounded-xl p-4 border transition-all hover:scale-105"
+                             :style="'border-color:' + card.color + '33; background: linear-gradient(135deg, ' + card.color + '0a, transparent)'">
+                            <div class="flex items-center gap-2 mb-2">
+                                <img :src="'https://api.dicebear.com/7.x/thumbs/svg?seed=' + card.username + '&backgroundColor=transparent'"
+                                     class="w-6 h-6 rounded-full" alt="avatar">
+                                <span class="text-sm font-medium" :style="'color:' + card.color" x-text="card.username"></span>
                             </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="font-medium text-sm truncate" x-text="item.title || 'Unknown Track'"></p>
-                                <p class="text-xs text-gray-400 truncate" x-text="item.artist || 'Unknown Artist'"></p>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <span class="text-xs px-1.5 py-0.5 rounded"
-                                          :style="'background:' + item.color + '22; color:' + item.color"
-                                          x-text="item.username"></span>
-                                    <span class="text-xs text-gray-600" x-text="formatTimeAgo(item.created_at)"></span>
-                                </div>
-                            </div>
-                            <a :href="item.url" target="_blank" rel="noopener"
-                               class="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-purple-400">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                                </svg>
-                            </a>
+                            <p class="font-bold text-sm" x-text="card.personality"></p>
+                            <p class="text-xs text-gray-500 mt-1" x-text="card.description"></p>
                         </div>
                     </template>
                 </div>
             </div>
         </div>
 
-        <!-- Fourth Row: Achievements + Heatmap -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <!-- Achievements/Badges -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 0.9s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    🏅 Achievements
-                </h2>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <template x-for="badge in badges" :key="badge.id">
-                        <div class="badge-shine rounded-xl p-3 text-center transition-all"
-                             :class="badge.unlocked ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30' : 'bg-dark-700/50 opacity-50 grayscale'">
-                            <div class="text-2xl mb-1" x-text="badge.emoji"></div>
-                            <div class="text-xs font-semibold" x-text="badge.name"></div>
-                            <div class="text-[10px] text-gray-500 mt-0.5" x-text="badge.description"></div>
-                            <div x-show="badge.holder" class="text-[10px] text-purple-400 mt-1" x-text="badge.holder"></div>
-                        </div>
-                    </template>
-                </div>
-            </div>
-
-            <!-- Time Heatmap -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 1.0s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    🗓️ Activity Heatmap
-                    <span class="text-xs text-gray-500 font-normal">(Hour x Day)</span>
-                </h2>
-                <div class="overflow-x-auto">
-                    <div class="min-w-[400px]">
-                        <!-- Day labels -->
-                        <div class="flex mb-1">
-                            <div class="w-12"></div>
-                            <template x-for="hour in [0,3,6,9,12,15,18,21]" :key="hour">
-                                <div class="flex-1 text-center text-[10px] text-gray-500" x-text="hour + 'h'"></div>
-                            </template>
-                        </div>
-                        <!-- Heatmap rows -->
-                        <template x-for="(day, dayIdx) in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']" :key="day">
-                            <div class="flex items-center gap-1 mb-1">
-                                <div class="w-12 text-[10px] text-gray-500" x-text="day"></div>
-                                <div class="flex-1 flex gap-0.5">
-                                    <template x-for="hour in 24" :key="hour">
-                                        <div class="heatmap-cell flex-1 h-4 rounded-sm cursor-pointer"
-                                             :style="'background:' + getHeatmapColor(dayIdx, hour - 1)"
-                                             :title="day + ' ' + (hour-1) + ':00 - ' + getHeatmapCount(dayIdx, hour-1) + ' songs'">
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-                        </template>
-                        <!-- Legend -->
-                        <div class="flex items-center gap-2 mt-3 justify-end">
-                            <span class="text-[10px] text-gray-500">Less</span>
-                            <div class="flex gap-0.5">
-                                <div class="w-3 h-3 rounded-sm" style="background: rgba(139,92,246,0.05)"></div>
-                                <div class="w-3 h-3 rounded-sm" style="background: rgba(139,92,246,0.2)"></div>
-                                <div class="w-3 h-3 rounded-sm" style="background: rgba(139,92,246,0.4)"></div>
-                                <div class="w-3 h-3 rounded-sm" style="background: rgba(139,92,246,0.7)"></div>
-                                <div class="w-3 h-3 rounded-sm" style="background: rgba(139,92,246,1)"></div>
-                            </div>
-                            <span class="text-[10px] text-gray-500">More</span>
-                        </div>
+        <!-- Hall of Fame -->
+        <div class="mb-10 reveal-section" data-delay="1000">
+            <h2 class="text-2xl font-display font-bold mb-6 text-center gradient-text-gold">🏛️ Hall of Fame</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <template x-for="fame in hallOfFame" :key="fame.title">
+                    <div class="gold-card p-5 text-center">
+                        <div class="text-3xl mb-3" x-text="fame.emoji"></div>
+                        <h3 class="font-display font-bold text-amber-400 text-sm" x-text="fame.title"></h3>
+                        <p class="text-xs text-gray-500 mt-1" x-text="fame.description"></p>
+                        <p class="text-sm text-gray-300 mt-2 font-medium" x-text="fame.value"></p>
                     </div>
-                </div>
+                </template>
             </div>
         </div>
 
-        <!-- Fifth Row: Hall of Fame + Head-to-Head -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <!-- Hall of Fame -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 1.1s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    🏛️ Hall of Fame
-                </h2>
-                <div class="space-y-4">
-                    <div class="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-transparent">
-                        <span class="text-3xl">🎵</span>
-                        <div>
-                            <div class="text-xs text-amber-400 uppercase font-semibold">First Ever Slap</div>
-                            <div class="font-bold" x-text="hallOfFame.firstSong?.title || '...'"></div>
-                            <div class="text-xs text-gray-400" x-text="'by ' + (hallOfFame.firstSong?.artist || '...') + ' - added by ' + (hallOfFame.firstSong?.username || '...')"></div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-purple-500/10 to-transparent">
-                        <span class="text-3xl">👑</span>
-                        <div>
-                            <div class="text-xs text-purple-400 uppercase font-semibold">Most Submitted Artist</div>
-                            <div class="font-bold" x-text="stats.top_artist || '...'"></div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-4 p-3 rounded-lg bg-gradient-to-r from-cyan-500/10 to-transparent">
-                        <span class="text-3xl">📅</span>
-                        <div>
-                            <div class="text-xs text-cyan-400 uppercase font-semibold">Biggest Single Day</div>
-                            <div class="font-bold" x-text="hallOfFame.biggestDay?.date || '...'"></div>
-                            <div class="text-xs text-gray-400" x-text="(hallOfFame.biggestDay?.count || 0) + ' songs added'"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Head-to-Head Battle -->
-            <div class="glass-card p-6 slide-in" style="animation-delay: 1.2s">
-                <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
-                    ⚔️ Head-to-Head
-                </h2>
-                <div class="flex items-center gap-4 mb-6">
-                    <select x-model="h2hUser1" @change="updateH2H()"
-                            class="flex-1 bg-dark-700 border border-purple-500/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
-                        <template x-for="entry in leaderboard" :key="entry.username">
-                            <option :value="entry.username" x-text="entry.username"></option>
-                        </template>
-                    </select>
-                    <span class="text-xl font-bold text-gray-500">VS</span>
-                    <select x-model="h2hUser2" @change="updateH2H()"
-                            class="flex-1 bg-dark-700 border border-pink-500/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-pink-500">
-                        <template x-for="entry in leaderboard" :key="entry.username">
-                            <option :value="entry.username" x-text="entry.username"></option>
-                        </template>
-                    </select>
-                </div>
-                <div class="space-y-3" x-show="h2hData">
-                    <!-- Total songs comparison -->
-                    <div class="flex items-center gap-2">
-                        <div class="w-20 text-right text-sm font-bold" :style="'color:' + (h2hData?.user1Color || '#8b5cf6')" x-text="h2hData?.user1Songs || 0"></div>
-                        <div class="flex-1 flex h-4 rounded-full overflow-hidden bg-dark-700">
-                            <div class="h-full transition-all duration-500" :style="'width:' + h2hBar1Pct + '%; background:' + (h2hData?.user1Color || '#8b5cf6')"></div>
-                            <div class="h-full transition-all duration-500" :style="'width:' + h2hBar2Pct + '%; background:' + (h2hData?.user2Color || '#f43f5e')"></div>
-                        </div>
-                        <div class="w-20 text-sm font-bold" :style="'color:' + (h2hData?.user2Color || '#f43f5e')" x-text="h2hData?.user2Songs || 0"></div>
-                    </div>
-                    <div class="text-center text-xs text-gray-500">Total Songs</div>
-
-                    <!-- Unique artists -->
-                    <div class="flex items-center gap-2 mt-4">
-                        <div class="w-20 text-right text-sm" x-text="(h2hData?.user1UniqueArtists || 0) + ' artists'"></div>
-                        <div class="flex-1 text-center text-xs text-gray-400">Unique Artists</div>
-                        <div class="w-20 text-sm" x-text="(h2hData?.user2UniqueArtists || 0) + ' artists'"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- User Profile Modal -->
-        <div x-show="showProfile" x-transition:enter="transition ease-out duration-300"
-             x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-             x-transition:leave="transition ease-in duration-200"
-             x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-             @click.self="showProfile = false">
-            <div class="glass-card w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" @click.stop>
-                <div class="flex items-center justify-between mb-6">
-                    <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg uppercase"
-                             :style="'background:' + (profileData?.color || '#6b7280') + '33; color:' + (profileData?.color || '#6b7280')">
-                            <span x-text="(profileData?.username || 'U').charAt(0)"></span>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-bold" x-text="profileData?.username || 'User'"></h3>
-                            <p class="text-sm text-gray-400">
-                                Rank #<span x-text="profileData?.rank || '?'"></span> &bull;
-                                <span x-text="profileData?.total_songs || 0"></span> songs
-                            </p>
-                        </div>
-                    </div>
-                    <button @click="showProfile = false" class="text-gray-400 hover:text-white transition-colors">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
-                </div>
-
-                <!-- Profile Stats -->
-                <div class="grid grid-cols-2 gap-3 mb-6">
-                    <div class="bg-dark-700/50 rounded-lg p-3">
-                        <div class="text-xs text-gray-500">Favorite Artist</div>
-                        <div class="font-semibold text-sm truncate" x-text="profileData?.favorite_artist || 'None'"></div>
-                    </div>
-                    <div class="bg-dark-700/50 rounded-lg p-3">
-                        <div class="text-xs text-gray-500">Preferred Platform</div>
-                        <div class="font-semibold text-sm" x-text="profileData?.favorite_platform || 'None'"></div>
-                    </div>
-                    <div class="bg-dark-700/50 rounded-lg p-3">
-                        <div class="text-xs text-gray-500">First Submission</div>
-                        <div class="font-semibold text-sm" x-text="formatDate(profileData?.first_submission)"></div>
-                    </div>
-                    <div class="bg-dark-700/50 rounded-lg p-3">
-                        <div class="text-xs text-gray-500">Latest Submission</div>
-                        <div class="font-semibold text-sm" x-text="formatDate(profileData?.latest_submission)"></div>
-                    </div>
-                </div>
-
-                <!-- User's Songs -->
-                <h4 class="font-bold text-sm mb-3 text-gray-400 uppercase tracking-wider">Submissions</h4>
-                <div class="space-y-2 max-h-48 overflow-y-auto feed-scroll">
-                    <template x-for="item in (profileData?.submissions || [])" :key="item.created_at">
-                        <div class="flex items-center gap-3 p-2 rounded-lg bg-dark-700/30">
-                            <span x-text="getPlatformEmoji(item.source_platform)"></span>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm truncate" x-text="item.title || 'Unknown'"></p>
-                                <p class="text-xs text-gray-500 truncate" x-text="item.artist || 'Unknown'"></p>
+        <!-- Recent Activity Feed -->
+        <div class="glass-card p-6 mb-10 reveal-section" data-delay="1050">
+            <h2 class="text-xl font-display font-bold mb-6 flex items-center gap-2">
+                📜 Recent Activity Feed
+            </h2>
+            <div class="space-y-3 max-h-96 overflow-y-auto feed-scroll pr-2">
+                <template x-for="item in recent" :key="item.created_at + item.url">
+                    <div class="flex items-center gap-4 p-3 rounded-xl hover:bg-white/5 transition-all">
+                        <!-- User avatar -->
+                        <img :src="'https://api.dicebear.com/7.x/thumbs/svg?seed=' + item.username + '&backgroundColor=transparent'"
+                             class="w-10 h-10 rounded-full flex-shrink-0" alt="avatar">
+                        <!-- Track info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-sm truncate" x-text="item.title || 'Unknown Track'"></span>
+                                <span class="text-lg flex-shrink-0" x-text="getPlatformEmoji(item.source_platform)"></span>
                             </div>
-                            <span class="text-xs text-gray-600" x-text="formatDate(item.created_at)"></span>
+                            <p class="text-xs text-gray-400 truncate" x-text="(item.artist || 'Unknown Artist') + (item.album ? ' - ' + item.album : '')"></p>
                         </div>
-                    </template>
-                </div>
+                        <!-- User + time -->
+                        <div class="text-right flex-shrink-0">
+                            <span class="px-2 py-0.5 rounded text-xs" :style="'background:' + item.color + '22; color:' + item.color" x-text="item.username"></span>
+                            <p class="text-xs text-gray-600 mt-1" x-text="timeAgo(item.created_at)"></p>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
         <!-- Footer -->
-        <footer class="text-center py-8 text-gray-600 text-sm slide-in" style="animation-delay: 1.3s">
-            <p>Built with 💜 for the squad &mdash; Slapshare by Slaptastic</p>
-            <p class="mt-1 text-xs">Music makes us one 🎵</p>
+        <footer class="text-center py-8 text-gray-600 text-sm">
+            <p>Slapshare &mdash; Built with 💜 for the squad</p>
+            <p class="mt-1 text-gray-700">Auto-refreshes every 60 seconds</p>
         </footer>
+
     </div>
 
+    <!-- Alpine.js App Logic -->
     <script>
-        // Generate floating music notes
-        function createParticles() {
-            const container = document.getElementById('particles');
-            const notes = ['♪', '♫', '♬', '🎵', '🎶', '🎤', '🎧'];
-            for (let i = 0; i < 20; i++) {
-                const note = document.createElement('div');
-                note.className = 'music-note';
-                note.textContent = notes[Math.floor(Math.random() * notes.length)];
-                note.style.left = Math.random() * 100 + '%';
-                note.style.animationDuration = (15 + Math.random() * 20) + 's';
-                note.style.animationDelay = Math.random() * 20 + 's';
-                note.style.fontSize = (1 + Math.random() * 1.5) + 'rem';
-                container.appendChild(note);
-            }
-        }
-        createParticles();
+    function dashboard() {
+        return {
+            // Data
+            stats: {},
+            leaderboard: [],
+            recent: [],
+            genres: [],
+            genreMaxCount: 1,
+            timeline: [],
+            artists: [],
+            achievements: [],
+            hipsters: [],
+            streaks: [],
+            personalities: [],
+            hallOfFame: [],
+            hotItems: [],
+            facts: [],
+            currentFactIndex: 0,
+            currentFact: '',
+            animatedTotal: 0,
+            h2hUser1: '',
+            h2hUser2: '',
+            h2hData: null,
+            loading: true,
 
-        // Alpine.js Dashboard App
-        function dashboard() {
-            return {
-                // Data
-                stats: {},
-                leaderboard: [],
-                recent: [],
-                genres: [],
-                timeline: [],
-                artists: [],
-                hotItems: [],
-                badges: [],
-                hallOfFame: { firstSong: null, biggestDay: null },
-                heatmapData: {},
-                facts: [],
-                currentFact: '',
-                factIndex: 0,
+            // Charts
+            timelineChart: null,
+            genreChart: null,
 
-                // UI State
-                showProfile: false,
-                profileData: null,
-                animatedTotal: 0,
-                h2hUser1: '',
-                h2hUser2: '',
-                h2hData: null,
-                topDiscoverer: 'Loading...',
+            async init() {
+                await this.loadAll();
+                this.startAutoRefresh();
+                this.startFactRotation();
+                this.initParticles();
+                this.initScrollReveal();
+                this.initGSAP();
+            },
 
-                // Computed
-                get h2hBar1Pct() {
-                    if (!this.h2hData) return 50;
-                    const total = (this.h2hData.user1Songs || 0) + (this.h2hData.user2Songs || 0);
-                    return total > 0 ? ((this.h2hData.user1Songs / total) * 100) : 50;
-                },
-                get h2hBar2Pct() {
-                    return 100 - this.h2hBar1Pct;
-                },
+            async loadAll() {
+                try {
+                    const [statsRes, leaderboardRes, recentRes, genresRes, timelineRes, artistsRes, achievementsRes, hipsterRes, streaksRes, personalitiesRes, hallRes, heatmapRes] = await Promise.all([
+                        fetch('/api/v1/dashboard/stats').then(r => r.json()),
+                        fetch('/api/v1/dashboard/leaderboard').then(r => r.json()),
+                        fetch('/api/v1/dashboard/recent?limit=30').then(r => r.json()),
+                        fetch('/api/v1/dashboard/genres').then(r => r.json()),
+                        fetch('/api/v1/dashboard/timeline').then(r => r.json()),
+                        fetch('/api/v1/dashboard/artists?limit=10').then(r => r.json()),
+                        fetch('/api/v1/dashboard/achievements').then(r => r.json()),
+                        fetch('/api/v1/dashboard/hipster').then(r => r.json()),
+                        fetch('/api/v1/dashboard/streaks').then(r => r.json()),
+                        fetch('/api/v1/dashboard/personalities').then(r => r.json()),
+                        fetch('/api/v1/dashboard/hall-of-fame').then(r => r.json()),
+                        fetch('/api/v1/dashboard/heatmap').then(r => r.json()),
+                    ]);
 
-                // Methods
-                async init() {
-                    await this.fetchAll();
-                    this.animateCounter();
-                    this.computeBadges();
-                    this.computeHallOfFame();
-                    this.computeHeatmap();
-                    this.computeHotItems();
-                    this.computeDiscoveryScores();
+                    this.stats = statsRes;
+                    this.leaderboard = leaderboardRes.entries || [];
+                    this.recent = recentRes.items || [];
+                    this.genres = genresRes.genres || [];
+                    this.genreMaxCount = Math.max(...this.genres.map(g => g.count), 1);
+                    this.timeline = timelineRes.entries || [];
+                    this.artists = artistsRes.artists || [];
+                    this.achievements = achievementsRes.achievements || [];
+                    this.hipsters = hipsterRes.entries || [];
+                    this.streaks = streaksRes.entries || [];
+                    this.personalities = personalitiesRes.cards || [];
+                    this.hallOfFame = hallRes.entries || [];
+
+                    // Hot items = songs from last 24h
+                    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                    this.hotItems = this.recent.filter(item => new Date(item.created_at) > dayAgo);
+
+                    // Generate fun facts
                     this.generateFacts();
-                    this.rotateFacts();
-                    this.initCharts();
 
-                    // Set initial H2H users
-                    if (this.leaderboard.length >= 2) {
-                        this.h2hUser1 = this.leaderboard[0].username;
-                        this.h2hUser2 = this.leaderboard[1].username;
-                        this.updateH2H();
-                    }
+                    // Animate total counter
+                    this.animateCounter(this.stats.total_songs || 0);
 
-                    // Auto-refresh every 60 seconds
-                    setInterval(() => this.fetchAll(), 60000);
-                },
+                    // Render charts
+                    this.$nextTick(() => {
+                        this.renderTimelineChart();
+                        this.renderGenreChart();
+                        this.renderHeatmap(heatmapRes);
+                    });
 
-                async fetchAll() {
-                    const base = '/api/v1/dashboard';
-                    try {
-                        const [statsRes, lbRes, recentRes, genresRes, timelineRes, artistsRes] = await Promise.all([
-                            fetch(base + '/stats'),
-                            fetch(base + '/leaderboard'),
-                            fetch(base + '/recent?limit=30'),
-                            fetch(base + '/genres'),
-                            fetch(base + '/timeline'),
-                            fetch(base + '/artists?limit=15'),
-                        ]);
+                    this.loading = false;
+                } catch (e) {
+                    console.error('Failed to load dashboard data:', e);
+                }
+            },
 
-                        this.stats = await statsRes.json();
-                        const lbData = await lbRes.json();
-                        this.leaderboard = lbData.entries || [];
-                        const recentData = await recentRes.json();
-                        this.recent = recentData.items || [];
-                        const genresData = await genresRes.json();
-                        this.genres = genresData.genres || [];
-                        const timelineData = await timelineRes.json();
-                        this.timeline = timelineData.entries || [];
-                        const artistsData = await artistsRes.json();
-                        this.artists = artistsData.artists || [];
-                    } catch (e) {
-                        console.error('Failed to fetch dashboard data:', e);
-                    }
-                },
+            generateFacts() {
+                const f = [];
+                if (this.stats.top_artist) f.push(`The most submitted artist is ${this.stats.top_artist}.`);
+                if (this.stats.most_active_day) f.push(`${this.stats.most_active_day} is the most active day for new submissions.`);
+                if (this.stats.peak_hour !== null && this.stats.peak_hour !== undefined) f.push(`Peak submission hour is ${this.stats.peak_hour}:00 - that's when the vibes hit hardest.`);
+                if (this.stats.longest_streak_user) f.push(`${this.stats.longest_streak_user} holds the longest streak at ${this.stats.longest_streak_days} consecutive days.`);
+                if (this.stats.total_artists) f.push(`The library spans ${this.stats.total_artists} different artists - diverse taste confirmed.`);
+                if (this.leaderboard.length > 1) f.push(`${this.leaderboard[0]?.username} leads with ${this.leaderboard[0]?.song_count} songs, ${this.leaderboard[0]?.song_count - (this.leaderboard[1]?.song_count || 0)} ahead of ${this.leaderboard[1]?.username}.`);
+                if (this.stats.this_week_additions) f.push(`${this.stats.this_week_additions} new songs were added this week alone!`);
+                if (this.hipsters.length > 0) f.push(`${this.hipsters[0]?.username} has the most hipster taste with a score of ${this.hipsters[0]?.hipster_score?.toFixed(1)}.`);
+                this.facts = f;
+                if (f.length > 0) this.currentFact = f[0];
+            },
 
-                animateCounter() {
-                    const target = this.stats.total_songs || 0;
+            nextFact() {
+                this.currentFactIndex = (this.currentFactIndex + 1) % this.facts.length;
+                this.currentFact = this.facts[this.currentFactIndex];
+            },
+
+            startFactRotation() {
+                setInterval(() => { if (this.facts.length > 0) this.nextFact(); }, 8000);
+            },
+
+            animateCounter(target) {
+                if (typeof anime !== 'undefined') {
+                    const obj = { value: 0 };
+                    anime({
+                        targets: obj,
+                        value: target,
+                        round: 1,
+                        duration: 2500,
+                        easing: 'easeOutExpo',
+                        update: () => { this.animatedTotal = obj.value; }
+                    });
+                } else {
+                    // Fallback
                     const duration = 2000;
-                    const start = performance.now();
-                    const animate = (now) => {
-                        const elapsed = now - start;
+                    const startTime = performance.now();
+                    const animate = (currentTime) => {
+                        const elapsed = currentTime - startTime;
                         const progress = Math.min(elapsed / duration, 1);
-                        // Ease out cubic
                         const eased = 1 - Math.pow(1 - progress, 3);
-                        this.animatedTotal = Math.floor(eased * target);
+                        this.animatedTotal = Math.floor(target * eased);
                         if (progress < 1) requestAnimationFrame(animate);
                     };
                     requestAnimationFrame(animate);
-                },
+                }
+            },
 
-                computeHotItems() {
-                    const now = new Date();
-                    const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
-                    this.hotItems = this.recent.filter(item => {
-                        const itemDate = new Date(item.created_at);
-                        return itemDate >= oneDayAgo;
-                    });
-                },
+            async loadHeadToHead() {
+                if (!this.h2hUser1 || !this.h2hUser2 || this.h2hUser1 === this.h2hUser2) {
+                    this.h2hData = null;
+                    return;
+                }
+                try {
+                    const res = await fetch(`/api/v1/dashboard/head-to-head/${this.h2hUser1}/${this.h2hUser2}`);
+                    this.h2hData = await res.json();
+                } catch (e) {
+                    console.error('Head to head failed:', e);
+                }
+            },
 
-                computeBadges() {
-                    this.badges = [
-                        {
-                            id: 'first_blood',
-                            emoji: '🩸',
-                            name: 'First Blood',
-                            description: 'First song ever',
-                            unlocked: this.recent.length > 0,
-                            holder: this.recent.length > 0 ? this.recent[this.recent.length - 1]?.username : null,
-                        },
-                        {
-                            id: 'top_slapper',
-                            emoji: '👑',
-                            name: 'Top Slapper',
-                            description: 'Most songs overall',
-                            unlocked: this.leaderboard.length > 0,
-                            holder: this.leaderboard[0]?.username || null,
-                        },
-                        {
-                            id: 'night_owl',
-                            emoji: '🦉',
-                            name: 'Night Owl',
-                            description: 'Submitted after midnight',
-                            unlocked: this.recent.some(i => {
-                                const h = new Date(i.created_at).getHours();
-                                return h >= 0 && h < 5;
-                            }),
-                            holder: this.recent.find(i => {
-                                const h = new Date(i.created_at).getHours();
-                                return h >= 0 && h < 5;
-                            })?.username || null,
-                        },
-                        {
-                            id: 'streak_master',
-                            emoji: '🔥',
-                            name: 'Streak Master',
-                            description: '3+ day streak',
-                            unlocked: (this.stats.longest_streak_days || 0) >= 3,
-                            holder: this.stats.longest_streak_user || null,
-                        },
-                        {
-                            id: 'diverse',
-                            emoji: '🌈',
-                            name: 'Genre Bender',
-                            description: '3+ different sources',
-                            unlocked: (this.genres?.length || 0) >= 3,
-                            holder: null,
-                        },
-                        {
-                            id: 'explorer',
-                            emoji: '🧭',
-                            name: 'Explorer',
-                            description: '5+ unique artists',
-                            unlocked: (this.stats.total_artists || 0) >= 5,
-                            holder: null,
-                        },
-                        {
-                            id: 'prolific',
-                            emoji: '💎',
-                            name: 'Diamond Hands',
-                            description: '10+ songs submitted',
-                            unlocked: this.leaderboard.some(e => e.song_count >= 10),
-                            holder: this.leaderboard.find(e => e.song_count >= 10)?.username || null,
-                        },
-                        {
-                            id: 'social',
-                            emoji: '🤝',
-                            name: 'Squad Goals',
-                            description: '5+ contributors',
-                            unlocked: (this.stats.total_contributors || 0) >= 5,
-                            holder: null,
-                        },
-                        {
-                            id: 'century',
-                            emoji: '💯',
-                            name: 'Century',
-                            description: '100 total songs',
-                            unlocked: (this.stats.total_songs || 0) >= 100,
-                            holder: null,
-                        },
-                    ];
-                },
+            renderTimelineChart() {
+                const ctx = document.getElementById('timelineChart');
+                if (!ctx || this.timeline.length === 0) return;
+                if (this.timelineChart) this.timelineChart.destroy();
 
-                computeHallOfFame() {
-                    // First song ever
-                    if (this.recent.length > 0) {
-                        this.hallOfFame.firstSong = this.recent[this.recent.length - 1];
-                    }
-                    // Biggest day
-                    if (this.timeline.length > 0) {
-                        const biggest = this.timeline.reduce((a, b) => b.count > a.count ? b : a, this.timeline[0]);
-                        this.hallOfFame.biggestDay = biggest;
-                    }
-                },
+                const labels = this.timeline.map(e => e.date);
+                const data = this.timeline.map(e => e.count);
 
-                computeHeatmap() {
-                    // Build a 7x24 grid from recent data
-                    this.heatmapData = {};
-                    for (let d = 0; d < 7; d++) {
-                        for (let h = 0; h < 24; h++) {
-                            this.heatmapData[d + '-' + h] = 0;
-                        }
-                    }
-                    this.recent.forEach(item => {
-                        const date = new Date(item.created_at);
-                        const day = date.getDay(); // 0=Sun
-                        const hour = date.getHours();
-                        this.heatmapData[day + '-' + hour] = (this.heatmapData[day + '-' + hour] || 0) + 1;
-                    });
-                },
-
-                computeDiscoveryScores() {
-                    // Count unique artists per user (artists that ONLY they submitted)
-                    const artistToUsers = {};
-                    this.recent.forEach(item => {
-                        if (item.artist) {
-                            if (!artistToUsers[item.artist]) artistToUsers[item.artist] = new Set();
-                            artistToUsers[item.artist].add(item.username);
-                        }
-                    });
-                    const discoveryScores = {};
-                    Object.entries(artistToUsers).forEach(([artist, users]) => {
-                        if (users.size === 1) {
-                            const user = [...users][0];
-                            discoveryScores[user] = (discoveryScores[user] || 0) + 1;
-                        }
-                    });
-                    const sorted = Object.entries(discoveryScores).sort((a, b) => b[1] - a[1]);
-                    if (sorted.length > 0) {
-                        this.topDiscoverer = sorted[0][0] + ' (' + sorted[0][1] + ' unique)';
-                    } else {
-                        this.topDiscoverer = 'Everyone shares!';
-                    }
-                },
-
-                generateFacts() {
-                    this.facts = [];
-                    if (this.stats.total_songs) {
-                        this.facts.push(`The library has ${this.stats.total_songs} songs total. That's roughly ${Math.round(this.stats.total_songs * 3.5)} minutes of music!`);
-                    }
-                    if (this.stats.top_artist) {
-                        this.facts.push(`${this.stats.top_artist} is the most submitted artist. Clearly a squad favorite!`);
-                    }
-                    if (this.stats.most_active_day) {
-                        this.facts.push(`${this.stats.most_active_day} is the most active day for music sharing. The vibes hit different.`);
-                    }
-                    if (this.leaderboard.length > 0) {
-                        this.facts.push(`${this.leaderboard[0].username} leads with ${this.leaderboard[0].song_count} songs. Absolute legend!`);
-                    }
-                    if (this.stats.total_contributors) {
-                        this.facts.push(`${this.stats.total_contributors} people have contributed to this library. Music brings us together!`);
-                    }
-                    if (this.stats.peak_hour !== null) {
-                        this.facts.push(`Most songs get shared around ${this.formatHour(this.stats.peak_hour)}. That's when the mood hits!`);
-                    }
-                    if (this.facts.length > 0) {
-                        this.currentFact = this.facts[0];
-                    }
-                },
-
-                rotateFacts() {
-                    setInterval(() => {
-                        if (this.facts.length > 0) {
-                            this.factIndex = (this.factIndex + 1) % this.facts.length;
-                            this.currentFact = this.facts[this.factIndex];
-                        }
-                    }, 8000);
-                },
-
-                async updateH2H() {
-                    if (!this.h2hUser1 || !this.h2hUser2) return;
-                    try {
-                        const [r1, r2] = await Promise.all([
-                            fetch('/api/v1/dashboard/user/' + this.h2hUser1),
-                            fetch('/api/v1/dashboard/user/' + this.h2hUser2),
-                        ]);
-                        const u1 = await r1.json();
-                        const u2 = await r2.json();
-
-                        // Count unique artists
-                        const u1Artists = new Set((u1.submissions || []).map(s => s.artist).filter(Boolean));
-                        const u2Artists = new Set((u2.submissions || []).map(s => s.artist).filter(Boolean));
-
-                        this.h2hData = {
-                            user1Songs: u1.total_songs,
-                            user2Songs: u2.total_songs,
-                            user1Color: u1.color,
-                            user2Color: u2.color,
-                            user1UniqueArtists: u1Artists.size,
-                            user2UniqueArtists: u2Artists.size,
-                        };
-                    } catch (e) {
-                        console.error('H2H fetch failed:', e);
-                    }
-                },
-
-                async showUserProfile(username) {
-                    try {
-                        const res = await fetch('/api/v1/dashboard/user/' + username);
-                        this.profileData = await res.json();
-                        this.showProfile = true;
-                    } catch (e) {
-                        console.error('Profile fetch failed:', e);
-                    }
-                },
-
-                // Chart initialization
-                initCharts() {
-                    this.$nextTick(() => {
-                        this.initGenreChart();
-                        this.initTimelineChart();
-                    });
-                },
-
-                initGenreChart() {
-                    const ctx = document.getElementById('genreChart');
-                    if (!ctx || this.genres.length === 0) return;
-
-                    const colors = ['#8b5cf6', '#06b6d4', '#f43f5e', '#10b981', '#f59e0b', '#ec4899'];
-                    new Chart(ctx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: this.genres.map(g => g.name),
-                            datasets: [{
-                                data: this.genres.map(g => g.count),
-                                backgroundColor: this.genres.map((_, i) => colors[i % colors.length]),
-                                borderColor: 'rgba(10, 10, 15, 0.8)',
-                                borderWidth: 3,
-                                hoverOffset: 8,
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: true,
-                            cutout: '65%',
-                            plugins: {
-                                legend: { display: false },
+                this.timelineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Songs Added',
+                            data,
+                            fill: true,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: (context) => {
+                                const chart = context.chart;
+                                const {ctx: c, chartArea} = chart;
+                                if (!chartArea) return 'rgba(139, 92, 246, 0.1)';
+                                const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                                gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+                                gradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.15)');
+                                gradient.addColorStop(1, 'rgba(139, 92, 246, 0.0)');
+                                return gradient;
                             },
-                            animation: {
-                                animateRotate: true,
-                                duration: 1500,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            pointHoverBackgroundColor: '#8b5cf6',
+                            pointHoverBorderColor: '#fff',
+                            pointHoverBorderWidth: 2,
+                            borderWidth: 2.5,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(139, 92, 246, 0.05)' },
+                                ticks: { color: '#6b7280', maxTicksLimit: 8, font: { size: 10 } },
+                            },
+                            y: {
+                                grid: { color: 'rgba(139, 92, 246, 0.05)' },
+                                ticks: { color: '#6b7280', font: { size: 10 } },
+                                beginAtZero: true,
                             }
-                        }
-                    });
-                },
-
-                initTimelineChart() {
-                    const ctx = document.getElementById('timelineChart');
-                    if (!ctx || this.timeline.length === 0) return;
-
-                    const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 200);
-                    gradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
-                    gradient.addColorStop(1, 'rgba(139, 92, 246, 0.0)');
-
-                    new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: this.timeline.map(t => {
-                                const d = new Date(t.date);
-                                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                            }),
-                            datasets: [{
-                                data: this.timeline.map(t => t.count),
-                                borderColor: '#8b5cf6',
-                                backgroundColor: gradient,
-                                fill: true,
-                                tension: 0.4,
-                                borderWidth: 2,
-                                pointBackgroundColor: '#8b5cf6',
-                                pointBorderColor: '#0a0a0f',
-                                pointBorderWidth: 2,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                            }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false },
-                            },
-                            scales: {
-                                x: {
-                                    grid: { color: 'rgba(255,255,255,0.03)' },
-                                    ticks: { color: '#6b7280', font: { size: 10 } },
-                                },
-                                y: {
-                                    grid: { color: 'rgba(255,255,255,0.03)' },
-                                    ticks: { color: '#6b7280', stepSize: 1 },
-                                    beginAtZero: true,
-                                }
-                            },
-                            animation: { duration: 2000 }
+                        interaction: { intersect: false, mode: 'index' },
+                    }
+                });
+            },
+
+            renderGenreChart() {
+                const ctx = document.getElementById('genreChart');
+                if (!ctx || this.genres.length === 0) return;
+                if (this.genreChart) this.genreChart.destroy();
+
+                const colors = ['#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
+
+                this.genreChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: this.genres.map(g => g.name),
+                        datasets: [{
+                            data: this.genres.map(g => g.count),
+                            backgroundColor: this.genres.map((_, i) => colors[i % colors.length]),
+                            borderColor: '#0a0a0f',
+                            borderWidth: 3,
+                            hoverBorderColor: '#fff',
+                            hoverBorderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '65%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: '#9ca3af', padding: 15, font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' }
+                            }
+                        },
+                        animation: { animateRotate: true, duration: 1500 },
+                    }
+                });
+            },
+
+            renderHeatmap(data) {
+                const container = document.getElementById('heatmap-container');
+                if (!container || !data) return;
+                container.innerHTML = '';
+
+                const cellSize = 28;
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const hours = Array.from({length: 24}, (_, i) => i);
+                const maxCount = data.max_count || 1;
+
+                // Build lookup
+                const lookup = {};
+                (data.cells || []).forEach(c => { lookup[`${c.day}-${c.hour}`] = c.count; });
+
+                const svg = d3.select(container)
+                    .append('svg')
+                    .attr('width', (hours.length + 1) * cellSize + 50)
+                    .attr('height', (days.length + 1) * cellSize + 20);
+
+                // Day labels
+                svg.selectAll('.day-label')
+                    .data(days)
+                    .enter().append('text')
+                    .attr('x', 40)
+                    .attr('y', (_, i) => (i + 1.6) * cellSize)
+                    .attr('text-anchor', 'end')
+                    .attr('fill', '#6b7280')
+                    .attr('font-size', '10px')
+                    .attr('font-family', 'Inter, sans-serif')
+                    .text(d => d);
+
+                // Hour labels
+                svg.selectAll('.hour-label')
+                    .data(hours.filter(h => h % 3 === 0))
+                    .enter().append('text')
+                    .attr('x', (d) => (d + 1.5) * cellSize + 45)
+                    .attr('y', 12)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#6b7280')
+                    .attr('font-size', '9px')
+                    .attr('font-family', 'Inter, sans-serif')
+                    .text(d => d + ':00');
+
+                // Cells
+                const cells = [];
+                days.forEach((_, dayIdx) => {
+                    hours.forEach(hour => {
+                        cells.push({ day: dayIdx, hour, count: lookup[`${dayIdx}-${hour}`] || 0 });
+                    });
+                });
+
+                svg.selectAll('.cell')
+                    .data(cells)
+                    .enter().append('rect')
+                    .attr('class', 'heatmap-cell')
+                    .attr('x', d => (d.hour + 1) * cellSize + 45)
+                    .attr('y', d => (d.day + 1) * cellSize)
+                    .attr('width', cellSize - 3)
+                    .attr('height', cellSize - 3)
+                    .attr('rx', 4)
+                    .attr('fill', d => {
+                        if (d.count === 0) return 'rgba(139, 92, 246, 0.05)';
+                        const intensity = d.count / maxCount;
+                        const r = Math.round(139 * intensity + 59 * (1 - intensity));
+                        const g = Math.round(92 * intensity + 130 * (1 - intensity));
+                        const b = Math.round(246 * intensity);
+                        return `rgba(${r}, ${g}, ${b}, ${0.2 + intensity * 0.7})`;
+                    })
+                    .style('cursor', 'pointer')
+                    .append('title')
+                    .text(d => `${days[d.day]} ${d.hour}:00 - ${d.count} song${d.count !== 1 ? 's' : ''}`);
+            },
+
+            // Utilities
+            timeAgo(dateStr) {
+                if (!dateStr) return '';
+                const date = new Date(dateStr);
+                const now = new Date();
+                const seconds = Math.floor((now - date) / 1000);
+                if (seconds < 60) return 'just now';
+                if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+                if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+                if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+                return date.toLocaleDateString();
+            },
+
+            getPlatformEmoji(platform) {
+                const map = { spotify: '💚', apple_music: '🍎', youtube: '▶️', unknown: '🎵' };
+                return map[platform] || '🎵';
+            },
+
+            getAuraColor(platform) {
+                const map = { spotify: '#10b981', apple_music: '#ec4899', youtube: '#ef4444', unknown: '#6b7280' };
+                return map[platform] || '#6b7280';
+            },
+
+            getWeatherIcon(count, max) {
+                const ratio = count / max;
+                if (ratio > 0.8) return '🔥';
+                if (ratio > 0.6) return '☀️';
+                if (ratio > 0.4) return '🌤️';
+                if (ratio > 0.2) return '⛅';
+                return '🌧️';
+            },
+
+            getWeatherTemp(count, max) {
+                const ratio = count / max;
+                return Math.round(ratio * 40 + 10);
+            },
+
+            getWeatherTempClass(count, max) {
+                const ratio = count / max;
+                if (ratio > 0.7) return 'text-red-400';
+                if (ratio > 0.4) return 'text-amber-400';
+                return 'text-blue-400';
+            },
+
+            startAutoRefresh() {
+                setInterval(() => this.loadAll(), 60000);
+            },
+
+            // Particles (floating music notes)
+            initParticles() {
+                const canvas = document.getElementById('particles-canvas');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+
+                const notes = ['♪', '♫', '♬', '♪', '🎵', '🎶'];
+                const particles = [];
+
+                for (let i = 0; i < 35; i++) {
+                    particles.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        size: Math.random() * 14 + 10,
+                        speed: Math.random() * 0.4 + 0.15,
+                        drift: Math.random() * 0.4 - 0.2,
+                        note: notes[Math.floor(Math.random() * notes.length)],
+                        opacity: Math.random() * 0.06 + 0.02,
+                        rotation: Math.random() * 360,
+                        rotSpeed: Math.random() * 0.3 - 0.15,
+                    });
+                }
+
+                const animate = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    particles.forEach(p => {
+                        p.y -= p.speed;
+                        p.x += p.drift + Math.sin(p.y * 0.01) * 0.2;
+                        p.rotation += p.rotSpeed;
+                        if (p.y < -30) { p.y = canvas.height + 30; p.x = Math.random() * canvas.width; }
+                        if (p.x < -30) p.x = canvas.width + 30;
+                        if (p.x > canvas.width + 30) p.x = -30;
+
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.rotate(p.rotation * Math.PI / 180);
+                        ctx.globalAlpha = p.opacity;
+                        ctx.font = p.size + 'px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(p.note, 0, 0);
+                        ctx.restore();
+                    });
+                    requestAnimationFrame(animate);
+                };
+                animate();
+
+                window.addEventListener('resize', () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                });
+            },
+
+            // Scroll reveal with IntersectionObserver
+            initScrollReveal() {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const delay = entry.target.dataset.delay || 0;
+                            setTimeout(() => entry.target.classList.add('revealed'), parseInt(delay));
+                            observer.unobserve(entry.target);
                         }
                     });
-                },
+                }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
-                // Helpers
-                getGenreColor(name) {
-                    const colors = {
-                        'Spotify Finds': '#1db954',
-                        'Apple Music': '#fc3c44',
-                        'YouTube Discoveries': '#ff0000',
-                        'Other Sources': '#6b7280',
-                    };
-                    return colors[name] || '#8b5cf6';
-                },
+                document.querySelectorAll('.reveal-section').forEach(el => observer.observe(el));
+            },
 
-                getHeatmapColor(day, hour) {
-                    const count = this.heatmapData[day + '-' + hour] || 0;
-                    if (count === 0) return 'rgba(139, 92, 246, 0.03)';
-                    const intensity = Math.min(count / 3, 1);
-                    return `rgba(139, 92, 246, ${0.1 + intensity * 0.9})`;
-                },
+            // GSAP scroll-triggered animations
+            initGSAP() {
+                if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+                gsap.registerPlugin(ScrollTrigger);
 
-                getHeatmapCount(day, hour) {
-                    return this.heatmapData[day + '-' + hour] || 0;
-                },
-
-                getPlatformEmoji(platform) {
-                    const emojis = {
-                        'spotify': '🟢',
-                        'apple_music': '🍎',
-                        'youtube': '🔴',
-                        'unknown': '🎵',
-                    };
-                    return emojis[platform] || '🎵';
-                },
-
-                formatTimeAgo(dateStr) {
-                    if (!dateStr) return 'unknown';
-                    const date = new Date(dateStr);
-                    const now = new Date();
-                    const diff = Math.floor((now - date) / 1000);
-
-                    if (diff < 60) return 'just now';
-                    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-                    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-                    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
-                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                },
-
-                formatDate(dateStr) {
-                    if (!dateStr) return 'N/A';
-                    const date = new Date(dateStr);
-                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                },
-
-                formatHour(hour) {
-                    if (hour === null || hour === undefined) return '?';
-                    const h = parseInt(hour);
-                    if (h === 0) return '12:00 AM';
-                    if (h < 12) return h + ':00 AM';
-                    if (h === 12) return '12:00 PM';
-                    return (h - 12) + ':00 PM';
-                },
-            };
-        }
+                // Subtle parallax on orbs
+                gsap.to('.orb-1', {
+                    y: -100,
+                    scrollTrigger: { trigger: 'body', start: 'top top', end: 'bottom bottom', scrub: 1 }
+                });
+                gsap.to('.orb-2', {
+                    y: 80,
+                    scrollTrigger: { trigger: 'body', start: 'top top', end: 'bottom bottom', scrub: 1 }
+                });
+                gsap.to('.orb-3', {
+                    y: -60, x: 40,
+                    scrollTrigger: { trigger: 'body', start: 'top top', end: 'bottom bottom', scrub: 1 }
+                });
+            },
+        };
+    }
     </script>
 </body>
 </html>
