@@ -4,6 +4,8 @@ Public endpoints (no auth required) that provide aggregated statistics
 for the music leaderboard dashboard.
 """
 
+import json
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
