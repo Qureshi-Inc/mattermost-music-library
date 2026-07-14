@@ -123,4 +123,13 @@ export class LinkingService {
   unmute(mattermostUserId: string): boolean {
     return this.db.setMuted(mattermostUserId, false);
   }
+
+  setGroupJid(groupJid: string): void {
+    this.db.setSetting('whatsapp_group_jid', groupJid);
+    console.log(`[linking] WhatsApp group JID set to: ${groupJid}`);
+  }
+
+  getGroupJid(): string | null {
+    return this.db.getSetting('whatsapp_group_jid');
+  }
 }

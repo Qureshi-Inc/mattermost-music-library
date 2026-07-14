@@ -198,6 +198,18 @@ export class DatabaseClient {
     `).run(reason, id);
   }
 
+  setSetting(key: string, value: string): void {
+    this.db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(key, value);
+  }
+
+  getSetting(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value || null;
+  }
+
   close(): void {
     this.db.close();
   }

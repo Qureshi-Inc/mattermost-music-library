@@ -63,6 +63,16 @@ const MIGRATIONS = [
         ON link_codes (expires_at);
     `,
   },
+  {
+    version: 2,
+    description: 'Add settings table',
+    up: `
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -12,12 +12,19 @@
 import { MattermostClient } from '../mattermost/client';
 import { ParsedCommand } from '../mattermost/types';
 import { LinkingService } from './service';
+import { WhatsAppClient } from '../whatsapp/client';
 
 export class CommandHandler {
+  private waClient: WhatsAppClient | null = null;
+
   constructor(
     private readonly mmClient: MattermostClient,
     private readonly linkingService: LinkingService,
   ) {}
+
+  setWhatsAppConnection(client: WhatsAppClient): void {
+    this.waClient = client;
+  }
 
   async handleCommand(command: ParsedCommand): Promise<void> {
     let response: string;
@@ -37,6 +44,12 @@ export class CommandHandler {
         break;
       case 'unmute':
         response = this.handleUnmute(command);
+        break;
+      case 'groups':
+        response = await this.handleGroups(command);
+        break;
+      case 'set-group':
+        response = await this.handleSetGroup(command);
         break;
       default:
         response = [
@@ -140,5 +153,48 @@ export class CommandHandler {
       return '\u{1F514} WhatsApp notifications resumed!';
     }
     return '\u{2139}\u{FE0F} No WhatsApp link found. Link first with `@slaptastic whatsapp link`.';
+  }
+
+  private async handleGroups(_command: ParsedCommand): Promise<string> {
+    if (!this.waClient || !this.waClient.isReady) {
+      return '\u{274C} WhatsApp is not connected.';
+    }
+
+    try {
+      const groups = await this.waClient.getGroups();
+
+      if (groups.length === 0) {
+        return '\u{2139}\u{FE0F} The bot is not in any WhatsApp groups. Add it to a group first.';
+      }
+
+      const rows = groups.map((g) => {
+        return `| ${g.subject} | \`${g.id}\` | ${g.participants} |`;
+      });
+
+      return [
+        '**WhatsApp Groups:**',
+        '',
+        '| Name | JID | Members |',
+        '|------|-----|---------|',
+        ...rows,
+        '',
+        'Set the notification group with:',
+        '`@slaptastic whatsapp set-group <JID>`',
+      ].join('\n');
+    } catch (err: any) {
+      console.error('[commands] Failed to fetch groups:', err.message);
+      return `\u{274C} Failed to fetch groups: ${err.message}`;
+    }
+  }
+
+  private async handleSetGroup(command: ParsedCommand): Promise<string> {
+    const groupJid = command.args?.trim();
+    if (!groupJid || !groupJid.endsWith('@g.us')) {
+      return '\u{274C} Usage: `@slaptastic whatsapp set-group <group-jid>`\n\nGet the JID from `@slaptastic whatsapp groups`';
+    }
+
+    // Store in database
+    this.linkingService.setGroupJid(groupJid);
+    return `\u{2705} WhatsApp notification group set to: \`${groupJid}\``;
   }
 }

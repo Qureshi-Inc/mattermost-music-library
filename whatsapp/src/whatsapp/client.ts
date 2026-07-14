@@ -97,4 +97,22 @@ export class WhatsAppClient {
   async verifyNumber(phoneNumber: string): Promise<string | null> {
     return this.connection.isOnWhatsApp(phoneNumber);
   }
+
+  /**
+   * Get all WhatsApp groups the bot is in.
+   */
+  async getGroups(): Promise<Array<{ id: string; subject: string; participants: number }>> {
+    if (!this.connection.sock) return [];
+    try {
+      const groups = await this.connection.sock.groupFetchAllParticipating();
+      return Object.values(groups).map((g: any) => ({
+        id: g.id,
+        subject: g.subject || 'Unnamed',
+        participants: g.participants?.length || 0,
+      }));
+    } catch (err) {
+      console.error('[whatsapp-client] Failed to fetch groups:', err);
+      return [];
+    }
+  }
 }

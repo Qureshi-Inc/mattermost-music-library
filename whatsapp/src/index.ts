@@ -44,6 +44,7 @@ async function main(): Promise<void> {
   const mmClient = new MattermostClient(config.mattermost);
   const notificationHandler = new NotificationHandler(mmClient, db, config);
   const commandHandler = new CommandHandler(mmClient, linkingService);
+  commandHandler.setWhatsAppConnection(whatsapp);
 
   // Initialize notification queue processor
   const queue = new NotificationQueue(db, whatsapp, config);

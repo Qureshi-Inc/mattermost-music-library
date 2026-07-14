@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 # Valid commands the bot recognizes
 VALID_COMMANDS = frozenset({"status", "candidates", "add", "approve", "cancel", "retry"})
 
+# Commands handled by other services (WhatsApp worker) — don't reject these
+PASSTHROUGH_COMMANDS = frozenset({"whatsapp"})
+
 
 class JobService(Protocol):
     """Protocol defining the job service interface expected by the command handler.
@@ -97,6 +100,8 @@ def parse_command(command_name: str | None, command_args: str | None, raw_messag
         return None
 
     name = command_name.lower()
+    if name in PASSTHROUGH_COMMANDS:
+        return None  # Handled by another service (WhatsApp worker)
     if name not in VALID_COMMANDS:
         return None
 

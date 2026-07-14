@@ -16,7 +16,7 @@ import {
   ParsedCommand,
 } from './types';
 
-const WHATSAPP_COMMAND_PATTERN = /^(?:@slaptastic\s+)?whatsapp\s+(link|unlink|status|mute|unmute)(?:\s+(.+))?$/i;
+const WHATSAPP_COMMAND_PATTERN = /^(?:@slaptastic\s+)?whatsapp\s+(link|unlink|status|mute|unmute|groups|set-group)(?:\s+(.+))?$/i;
 
 export interface MattermostClientEvents {
   reply: (reply: ParsedReply) => void;
