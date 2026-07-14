@@ -119,13 +119,20 @@ export class WhatsAppConnection extends EventEmitter {
       throw new Error('WhatsApp not connected');
     }
 
-    await this.socket.sendMessage(jid, {
-      text,
-      mentions: mentions && mentions.length > 0 ? mentions : undefined,
-    }, {
-      // @ts-ignore - disable link preview generation
-      linkPreview: null,
-    });
+    try {
+      await this.socket.sendMessage(jid, {
+        text,
+        mentions: mentions && mentions.length > 0 ? mentions : undefined,
+      });
+    } catch (err: any) {
+      // If mentions cause jidDecode failure, retry without mentions
+      if (err?.message?.includes('jidDecode') || err?.message?.includes('destructure')) {
+        console.warn('[whatsapp] Mention failed, sending without mentions:', err.message);
+        await this.socket.sendMessage(jid, { text });
+      } else {
+        throw err;
+      }
+    }
   }
 
   /**
