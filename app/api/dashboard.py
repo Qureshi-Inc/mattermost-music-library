@@ -1503,11 +1503,14 @@ Respond in EXACTLY this JSON format:
         result_text = bedrock_response["content"][0]["text"].strip()
         if not result_text:
             raise ValueError("AI returned empty response (possible content moderation)")
-        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        # Strip markdown code fences
+        clean_text = re.sub(r'```json\s*', '', result_text)
+        clean_text = re.sub(r'```\s*', '', clean_text).strip()
+        json_match = re.search(r'\{[\s\S]*\}', clean_text)
         if json_match:
             ai_result = json.loads(json_match.group())
         else:
-            raise ValueError(f"No JSON found in AI response: {result_text[:100]}")
+            raise ValueError(f"No JSON found in AI response: {clean_text[:100]}")
     except Exception as e:
         import traceback
         traceback.print_exc()
