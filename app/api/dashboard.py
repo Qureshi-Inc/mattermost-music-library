@@ -1448,11 +1448,16 @@ async def get_ai_digest(db: DbSession) -> AIDigestResponse:
     user_songs = defaultdict(list)
     for r in rows:
         username = _get_display_name(r[2])
-        user_songs[username].append(f"{r[0]} - {r[1]}")
+        # Sanitize song titles to avoid content moderation
+        title = str(r[1] or "Unknown")
+        artist = str(r[0] or "Unknown")
+        user_songs[username].append(f"{artist} - {title}")
 
     context_lines = []
     for user, songs in user_songs.items():
-        context_lines.append(f"{user} added {len(songs)} songs: {', '.join(songs[:5])}")
+        # Only include clean song names (skip potentially offensive ones)
+        clean_songs = [s for s in songs[:5] if len(s) < 80]
+        context_lines.append(f"{user} added {len(songs)} songs: {', '.join(clean_songs[:4])}")
 
     context = "\n".join(context_lines)
 
@@ -1496,8 +1501,13 @@ Respond in EXACTLY this JSON format:
 
         bedrock_response = await asyncio.to_thread(_call)
         result_text = bedrock_response["content"][0]["text"].strip()
+        if not result_text:
+            raise ValueError("AI returned empty response (possible content moderation)")
         json_match = re.search(r'\{[\s\S]*\}', result_text)
-        ai_result = json.loads(json_match.group()) if json_match else json.loads(result_text)
+        if json_match:
+            ai_result = json.loads(json_match.group())
+        else:
+            raise ValueError(f"No JSON found in AI response: {result_text[:100]}")
     except Exception as e:
         import traceback
         traceback.print_exc()
