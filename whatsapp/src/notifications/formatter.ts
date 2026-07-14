@@ -45,8 +45,9 @@ export function formatReplyNotification(data: NotificationData): {
     preview = preview.substring(0, 197) + '...';
   }
 
-  // Build the post permalink
-  const permalink = `${data.mattermostUrl}/${data.teamName}/pl/${data.postId}`;
+  // Build the post permalink - use mattermost:// scheme to open in app
+  const host = data.mattermostUrl.replace(/^https?:\/\//, '');
+  const permalink = `mattermost://${host}/${data.teamName}/pl/${data.postId}`;
 
   const text = [
     `${mentionText} \u{1F3B5} ${data.replierUsername} replied to your Slapshare post:`,
