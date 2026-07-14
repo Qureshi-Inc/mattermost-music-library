@@ -22,6 +22,8 @@ services:
 
   whatsapp-worker:
     build: ./whatsapp
+    ports:
+      - "3100:3100"
     env_file:
       - .env
     environment:

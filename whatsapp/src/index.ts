@@ -87,6 +87,46 @@ async function main(): Promise<void> {
   console.log('[bridge] Connecting to Mattermost...');
   mmClient.start();
 
+  // Simple HTTP API for stream deck / external triggers
+  const http = await import('http');
+  const apiServer = http.createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+
+    if (req.url === '/health' && req.method === 'GET') {
+      res.end(JSON.stringify({ status: 'ok', whatsapp: whatsapp.isReady }));
+      return;
+    }
+
+    if (req.url === '/send' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: string) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { message, mentions } = JSON.parse(body);
+          if (!message) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'message required' }));
+            return;
+          }
+          await whatsapp.sendGroupNotification(message, mentions || []);
+          res.end(JSON.stringify({ status: 'sent', message }));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+
+  const apiPort = parseInt(process.env.API_PORT || '3100', 10);
+  apiServer.listen(apiPort, '0.0.0.0', () => {
+    console.log(`[bridge] HTTP API listening on port ${apiPort}`);
+  });
+
   // Periodic cleanup of expired link codes
   setInterval(() => {
     const cleaned = db.cleanExpiredCodes();
