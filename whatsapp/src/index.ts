@@ -102,14 +102,23 @@ async function main(): Promise<void> {
       req.on('data', (chunk: string) => body += chunk);
       req.on('end', async () => {
         try {
-          const { message, mentions } = JSON.parse(body);
+          const { message, mentions, mentionAll } = JSON.parse(body);
           if (!message) {
             res.statusCode = 400;
             res.end(JSON.stringify({ error: 'message required' }));
             return;
           }
-          await whatsapp.sendGroupNotification(message, mentions || []);
-          res.end(JSON.stringify({ status: 'sent', message }));
+
+          let mentionJids = mentions || [];
+
+          // If mentionAll is true, fetch all group participants and mention them
+          if (mentionAll) {
+            const participants = await whatsapp.getParticipants();
+            mentionJids = Array.from(participants.values());
+          }
+
+          await whatsapp.sendGroupNotification(message, mentionJids);
+          res.end(JSON.stringify({ status: 'sent', message, mentionedCount: mentionJids.length }));
         } catch (err: any) {
           res.statusCode = 500;
           res.end(JSON.stringify({ error: err.message }));
