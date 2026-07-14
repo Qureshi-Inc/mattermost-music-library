@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from app.api.dashboard import router as dashboard_router
 from app.api.jobs import router as jobs_router
+from app.api.listening import router as listening_router
 from app.api.tracks import router as tracks_router
 
 # The v1 router aggregates all endpoint groups
@@ -16,3 +17,4 @@ v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(jobs_router)
 v1_router.include_router(tracks_router)
 v1_router.include_router(dashboard_router)
+v1_router.include_router(listening_router)

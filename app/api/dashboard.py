@@ -144,7 +144,7 @@ async def get_stats(db: DbSession) -> StatsResponse:
     """Get overview statistics for the dashboard."""
     # Total completed songs
     total_result = await db.execute(
-        select(func.count(Job.id)).where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS))
+        select(func.count(func.distinct(Job.title))).where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.title.isnot(None))
     )
     total_songs = total_result.scalar_one()
 
@@ -275,12 +275,12 @@ async def get_leaderboard(db: DbSession) -> LeaderboardResponse:
     result = await db.execute(
         select(
             Job.requester_user_id,
-            func.count(Job.id).label("cnt"),
+            func.count(func.distinct(Job.title)).label("cnt"),
             func.max(Job.created_at).label("latest"),
         )
-        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.title.isnot(None))
         .group_by(Job.requester_user_id)
-        .order_by(func.count(Job.id).desc())
+        .order_by(func.count(func.distinct(Job.title)).desc())
     )
     rows = result.all()
 
@@ -1537,18 +1537,238 @@ Respond in EXACTLY this JSON format:
     return response
 
 
+# --- AI Curated Playlist Generation ---
+
+
+class AIPlaylist(BaseModel):
+    name: str
+    description: str
+    songs: list[str]  # "Artist - Title" format
+    jellyfin_playlist_id: str | None
+
+
+class AIPlaylistsResponse(BaseModel):
+    playlists: list[AIPlaylist]
+    generated_at: str
+
+
+class AIPlaylistGenerateRequest(BaseModel):
+    thumbs: dict[str, int] | None = None  # trackId -> 1/-1
+    play_counts: dict[str, int] | None = None  # trackId -> count
+    skip_counts: dict[str, int] | None = None  # trackId -> count
+
+
+AI_PLAYLIST_CACHE_TTL = 86400  # 24 hours
+
+
+@router.post("/ai/generate-playlists", response_model=AIPlaylistsResponse)
+async def generate_ai_playlists(
+    db: DbSession,
+    body: AIPlaylistGenerateRequest | None = None,
+) -> AIPlaylistsResponse:
+    """AI-powered playlist generation: creates themed playlists in Jellyfin."""
+    import asyncio
+    import re
+
+    from app.config import get_settings
+    from app.library.jellyfin import JellyfinClient
+
+    # Fetch all completed songs
+    result = await db.execute(
+        select(Job.id, Job.title, Job.artist, Job.album, Job.requester_user_id, Job.created_at)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS))
+        .order_by(Job.created_at.desc())
+    )
+    rows = result.all()
+
+    if not rows:
+        return AIPlaylistsResponse(playlists=[], generated_at=datetime.now(timezone.utc).isoformat())
+
+    # Build library context for AI
+    songs_context = []
+    for row in rows:
+        song_id, title, artist, album, user_id, created_at = row
+        username = _get_display_name(user_id)
+        entry = f"- {artist or 'Unknown'} - {title or 'Unknown'}"
+        if album:
+            entry += f" [{album}]"
+        entry += f" (added by {username}, {created_at.strftime('%Y-%m-%d') if created_at else 'unknown date'})"
+        songs_context.append(entry)
+
+    library_text = "\n".join(songs_context[:100])  # Cap at 100 songs for prompt size
+
+    # Build engagement data context
+    engagement_text = ""
+    if body:
+        engagement_parts = []
+        if body.thumbs:
+            liked = [k for k, v in body.thumbs.items() if v > 0]
+            disliked = [k for k, v in body.thumbs.items() if v < 0]
+            if liked:
+                engagement_parts.append(f"Thumbs up tracks: {', '.join(liked[:20])}")
+            if disliked:
+                engagement_parts.append(f"Thumbs down tracks: {', '.join(disliked[:20])}")
+        if body.play_counts:
+            top_played = sorted(body.play_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+            engagement_parts.append(f"Most played: {', '.join(f'{k} ({v} plays)' for k, v in top_played)}")
+        if body.skip_counts:
+            top_skipped = sorted(body.skip_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            engagement_parts.append(f"Most skipped: {', '.join(f'{k} ({v} skips)' for k, v in top_skipped)}")
+        if engagement_parts:
+            engagement_text = "\n\nEngagement data:\n" + "\n".join(engagement_parts)
+
+    prompt = f"""You are a music curator for a friend group's shared library called "Slapshare". Analyze this library and create 3-5 themed playlists.
+
+Full library ({len(rows)} songs):
+{library_text}
+{engagement_text}
+
+Create 3-5 creative, themed playlists from these songs. Guidelines:
+- Give each playlist a creative name (like "Late Night Vibes", "Workout Bangers", "Sunday Morning Coffee")
+- Explain what mood/vibe each playlist targets
+- Assign songs to playlists based on artist, mood, energy, and context
+- Each song can appear in at most 2 playlists
+- Consider thumbs up/down, play counts, and skip history if provided
+- Aim for genre diversity within each playlist while maintaining a cohesive vibe
+- Use the actual songs from the library — do not invent songs
+
+Respond in EXACTLY this JSON format (no other text):
+{{
+  "playlists": [
+    {{
+      "name": "<creative playlist name>",
+      "description": "<1-2 sentence description of the mood/vibe>",
+      "songs": ["Artist - Title", "Artist - Title", ...]
+    }}
+  ]
+}}"""
+
+    try:
+        def _call_bedrock():
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 2000,
+                    "temperature": 0.9,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(response["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call_bedrock)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        # Extract JSON from response (Claude may wrap in code blocks)
+        clean_text = re.sub(r'```json\s*', '', result_text)
+        clean_text = re.sub(r'```\s*', '', clean_text).strip()
+        json_match = re.search(r'\{[\s\S]*\}', clean_text)
+        if json_match:
+            ai_result = json.loads(json_match.group())
+        else:
+            ai_result = json.loads(clean_text)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # Fallback: return empty playlists on AI failure
+        return AIPlaylistsResponse(
+            playlists=[],
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # Create playlists in Jellyfin
+    settings = get_settings()
+    jellyfin = JellyfinClient(settings.jellyfin_url, settings.jellyfin_token)
+
+    playlists_response = []
+    try:
+        admin_user_id = await jellyfin.get_admin_user_id()
+        if not admin_user_id:
+            raise ValueError("Could not get Jellyfin admin user ID")
+
+        for playlist_data in ai_result.get("playlists", []):
+            playlist_name = f"AI: {playlist_data['name']}"
+            description = playlist_data.get("description", "")
+            songs_list = playlist_data.get("songs", [])
+
+            # Create or get the playlist in Jellyfin
+            playlist_id = await jellyfin.get_or_create_playlist(playlist_name, admin_user_id)
+
+            # Search and add each song
+            added_songs = []
+            for song_entry in songs_list:
+                # Parse "Artist - Title" format
+                parts = song_entry.split(" - ", 1)
+                if len(parts) == 2:
+                    artist, title = parts[0].strip(), parts[1].strip()
+                else:
+                    artist, title = "", song_entry.strip()
+
+                # Search for the track in Jellyfin
+                track_id = await jellyfin.search_track(title, artist)
+                if track_id and playlist_id:
+                    await jellyfin.add_to_playlist(playlist_id, track_id, admin_user_id)
+                    added_songs.append(song_entry)
+                else:
+                    # Still include in response even if not found in Jellyfin
+                    added_songs.append(song_entry)
+
+            playlists_response.append(AIPlaylist(
+                name=playlist_name,
+                description=description,
+                songs=added_songs,
+                jellyfin_playlist_id=playlist_id,
+            ))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # Return playlists without Jellyfin IDs on failure
+        for playlist_data in ai_result.get("playlists", []):
+            playlists_response.append(AIPlaylist(
+                name=f"AI: {playlist_data['name']}",
+                description=playlist_data.get("description", ""),
+                songs=playlist_data.get("songs", []),
+                jellyfin_playlist_id=None,
+            ))
+    finally:
+        await jellyfin.close()
+
+    response = AIPlaylistsResponse(
+        playlists=playlists_response,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _set_cached("ai_playlists", response)
+    return response
+
+
+@router.get("/ai/generate-playlists", response_model=AIPlaylistsResponse)
+async def get_ai_playlists_cached() -> AIPlaylistsResponse:
+    """Return cached AI-generated playlists (24-hour TTL)."""
+    cached = _get_cached("ai_playlists", ttl=AI_PLAYLIST_CACHE_TTL)
+    if cached:
+        return cached
+    return AIPlaylistsResponse(
+        playlists=[],
+        generated_at="",
+    )
+
+
 # --- AI Response Cache ---
 # Cache AI responses in memory to avoid repeated Bedrock calls on every page load
 _ai_cache: dict[str, tuple[float, any]] = {}
 AI_CACHE_TTL = 3600  # 1 hour
 
 
-def _get_cached(key: str):
+def _get_cached(key: str, ttl: int | None = None):
     """Get cached AI response if not expired."""
     import time
     if key in _ai_cache:
         ts, data = _ai_cache[key]
-        if time.time() - ts < AI_CACHE_TTL:
+        cache_ttl = ttl if ttl is not None else AI_CACHE_TTL
+        if time.time() - ts < cache_ttl:
             return data
     return None
 
