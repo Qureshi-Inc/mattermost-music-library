@@ -3,9 +3,11 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.config import get_settings
@@ -163,3 +165,26 @@ try:
     app.include_router(api_router, prefix="/api")
 except ImportError:
     logger.warning("API router not available -- /api routes will not be registered")
+
+
+# Serve the dashboard
+_static_dir = Path(__file__).parent / "static" / "dashboard"
+if _static_dir.exists():
+
+    @app.get("/dashboard", include_in_schema=False)
+    @app.get("/dashboard/", include_in_schema=False)
+    async def serve_dashboard() -> FileResponse:
+        """Serve the Slapshare music leaderboard dashboard."""
+        return FileResponse(
+            str(_static_dir / "index.html"),
+            media_type="text/html",
+        )
+
+    # Mount static directory for any additional assets (CSS/JS/images)
+    app.mount(
+        "/dashboard/assets",
+        StaticFiles(directory=str(_static_dir)),
+        name="dashboard-assets",
+    )
+else:
+    logger.warning("Dashboard static directory not found -- /dashboard will not be available")
