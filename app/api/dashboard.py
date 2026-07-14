@@ -1159,7 +1159,7 @@ Respond in EXACTLY this JSON format (no other text):
                 accept="application/json",
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 300,
+                    "max_tokens": 500,
                     "temperature": 0.9,
                     "messages": [{"role": "user", "content": prompt}],
                 }),
@@ -1275,7 +1275,7 @@ Respond in EXACTLY this JSON format:
                 accept="application/json",
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 300,
+                    "max_tokens": 500,
                     "temperature": 0.9,
                     "messages": [{"role": "user", "content": prompt}],
                 }),
@@ -1336,7 +1336,7 @@ Respond in EXACTLY this JSON format:
                 accept="application/json",
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 200,
+                    "max_tokens": 400,
                     "temperature": 0.8,
                     "messages": [{"role": "user", "content": prompt}],
                 }),
@@ -1405,7 +1405,7 @@ Respond in EXACTLY this JSON format:
                 accept="application/json",
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 150,
+                    "max_tokens": 300,
                     "temperature": 1.0,
                     "messages": [{"role": "user", "content": prompt}],
                 }),
@@ -1489,7 +1489,7 @@ Respond in EXACTLY this JSON format:
                 accept="application/json",
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 300,
+                    "max_tokens": 500,
                     "temperature": 0.8,
                     "messages": [{"role": "user", "content": prompt}],
                 }),
