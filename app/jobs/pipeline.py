@@ -398,16 +398,40 @@ class JobPipeline:
         return enriched
 
     def _apply_itunes_enrichment(self, metadata: dict, best: dict) -> dict:
-        """Apply iTunes result data to metadata."""
+        """Apply iTunes result data to metadata.
+
+        Only overrides title/artist/album if:
+        - The original metadata is missing that field, OR
+        - The iTunes match title closely matches the original title
+        This prevents wrong iTunes matches from overriding correct Spotify data.
+        """
         enriched = dict(metadata)
         extra = dict(enriched.get("extra", {}) or {})
 
-        if best.get("trackName"):
-            enriched["title"] = best["trackName"]
-        if best.get("artistName"):
-            enriched["artist"] = best["artistName"]
-        if best.get("collectionName"):
-            enriched["album"] = best["collectionName"]
+        # Verify the iTunes match is actually the same song
+        original_title = (metadata.get("title") or "").lower().strip()
+        itunes_title = (best.get("trackName") or "").lower().strip()
+
+        title_matches = (
+            not original_title
+            or original_title in itunes_title
+            or itunes_title in original_title
+        )
+
+        if title_matches:
+            # Safe to use iTunes data
+            if not enriched.get("title") and best.get("trackName"):
+                enriched["title"] = best["trackName"]
+            if not enriched.get("artist") and best.get("artistName"):
+                enriched["artist"] = best["artistName"]
+            if not enriched.get("album") and best.get("collectionName"):
+                enriched["album"] = best["collectionName"]
+        else:
+            # iTunes returned a different song — only take non-conflicting extras
+            logger.warning(
+                "iTunes title mismatch: '%s' vs '%s', skipping title/artist override",
+                original_title, itunes_title,
+            )
 
         if best.get("artworkUrl100"):
             extra["artwork_url"] = best["artworkUrl100"].replace("100x100", "600x600")
