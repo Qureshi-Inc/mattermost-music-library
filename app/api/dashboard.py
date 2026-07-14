@@ -1473,8 +1473,10 @@ Respond in EXACTLY this JSON format:
 }}"""
 
     try:
+        # Sanitize context to avoid content moderation issues
+        safe_context = context.replace("\n", " | ")[:800]
+
         def _call():
-            import boto3
             client = boto3.client("bedrock-runtime", region_name="us-east-1")
             response = client.invoke_model(
                 modelId="us.anthropic.claude-sonnet-4-6",
@@ -1487,14 +1489,19 @@ Respond in EXACTLY this JSON format:
                     "messages": [{"role": "user", "content": prompt}],
                 }),
             )
-            return json.loads(response["body"].read())
+            raw = response["body"].read()
+            if not raw:
+                raise ValueError("Empty response from Bedrock")
+            return json.loads(raw)
 
         bedrock_response = await asyncio.to_thread(_call)
         result_text = bedrock_response["content"][0]["text"].strip()
         json_match = re.search(r'\{[\s\S]*\}', result_text)
         ai_result = json.loads(json_match.group()) if json_match else json.loads(result_text)
     except Exception as e:
-        return AIDigestResponse(digest=f"AI unavailable: {str(e)[:50]}", highlights=[], vibe_shift="")
+        import traceback
+        traceback.print_exc()
+        return AIDigestResponse(digest=f"AI unavailable: {type(e).__name__}: {str(e)[:80]}", highlights=[], vibe_shift="")
 
     return AIDigestResponse(
         digest=ai_result.get("digest", ""),
