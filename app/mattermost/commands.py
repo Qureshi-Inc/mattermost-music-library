@@ -150,6 +150,11 @@ class CommandHandler:
         if hasattr(message_or_command, "command"):
             # It's an IncomingMessage
             msg = message_or_command
+
+            # Passthrough commands are handled by other services (e.g. WhatsApp worker)
+            if msg.command and msg.command.lower() in PASSTHROUGH_COMMANDS:
+                return ""
+
             parsed = parse_command(msg.command, msg.command_args, msg.message)
             if parsed is None:
                 return self._formatter.format_error(
