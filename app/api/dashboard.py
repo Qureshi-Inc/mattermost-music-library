@@ -303,7 +303,7 @@ async def get_leaderboard(db: DbSession) -> LeaderboardResponse:
 @router.get("/recent", response_model=RecentResponse)
 async def get_recent(
     db: DbSession,
-    limit: int = Query(default=20, ge=1, le=50),
+    limit: int = Query(default=20, ge=1, le=200),
 ) -> RecentResponse:
     """Get the most recent song additions."""
     result = await db.execute(
