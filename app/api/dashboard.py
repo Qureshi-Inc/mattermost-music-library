@@ -1059,3 +1059,120 @@ async def get_hall_of_fame(db: DbSession) -> HallOfFameResponse:
         ))
 
     return HallOfFameResponse(entries=entries)
+
+
+# --- AI-powered Taste DNA ---
+
+class TasteDNAResponse(BaseModel):
+    user1: str
+    user2: str
+    analysis: str
+    compatibility_score: int
+    shared_artists: list[str]
+    unique_to_user1: list[str]
+    unique_to_user2: list[str]
+    vibe_user1: str
+    vibe_user2: str
+
+
+@router.get("/taste-dna/{user1}/{user2}", response_model=TasteDNAResponse)
+async def get_taste_dna(user1: str, user2: str, db: DbSession) -> TasteDNAResponse:
+    """AI-powered taste DNA comparison between two users using Bedrock."""
+    import json
+    import boto3
+
+    # Get user IDs
+    uid1 = None
+    uid2 = None
+    for uid, name in USER_DISPLAY_NAMES.items():
+        if name == user1:
+            uid1 = uid
+        if name == user2:
+            uid2 = uid
+
+    if not uid1 or not uid2:
+        return TasteDNAResponse(
+            user1=user1, user2=user2, analysis="User not found.",
+            compatibility_score=0, shared_artists=[], unique_to_user1=[],
+            unique_to_user2=[], vibe_user1="", vibe_user2="",
+        )
+
+    # Get artists for each user
+    result1 = await db.execute(
+        select(Job.artist, Job.title, Job.album)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id == uid1, Job.artist.isnot(None))
+    )
+    songs1 = [(r[0], r[1], r[2]) for r in result1.all()]
+
+    result2 = await db.execute(
+        select(Job.artist, Job.title, Job.album)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id == uid2, Job.artist.isnot(None))
+    )
+    songs2 = [(r[0], r[1], r[2]) for r in result2.all()]
+
+    artists1 = set(s[0] for s in songs1 if s[0])
+    artists2 = set(s[0] for s in songs2 if s[0])
+    shared = artists1 & artists2
+    unique1 = artists1 - artists2
+    unique2 = artists2 - artists1
+
+    # Build context for AI
+    user1_library = "\n".join(f"- {s[0]} - {s[1]}" for s in songs1[:20])
+    user2_library = "\n".join(f"- {s[0]} - {s[1]}" for s in songs2[:20])
+
+    prompt = f"""You are a music taste analyst for a friend group's shared music library called "Slapshare".
+
+Compare these two users' music taste and give a fun, savage, millennial-energy analysis.
+
+{user1}'s library ({len(songs1)} songs):
+{user1_library}
+
+{user2}'s library ({len(songs2)} songs):
+{user2_library}
+
+Shared artists: {', '.join(list(shared)[:10]) or 'None'}
+Artists only {user1} has: {', '.join(list(unique1)[:10]) or 'None'}
+Artists only {user2} has: {', '.join(list(unique2)[:10]) or 'None'}
+
+Respond in EXACTLY this JSON format (no other text):
+{{
+  "analysis": "<2-3 sentence savage but fun comparison of their taste. Be specific about artists/genres. Use slang.>",
+  "compatibility_score": <0-100 integer>,
+  "vibe_user1": "<3-4 word vibe label for {user1}, e.g. 'Late Night R&B Connoisseur'>",
+  "vibe_user2": "<3-4 word vibe label for {user2}, e.g. 'Indie Rock Explorer'>"
+}}"""
+
+    try:
+        client = boto3.client("bedrock-runtime", region_name="us-east-1")
+        response = client.invoke_model(
+            modelId="us.anthropic.claude-sonnet-4-6",
+            contentType="application/json",
+            accept="application/json",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 300,
+                "temperature": 0.9,
+                "messages": [{"role": "user", "content": prompt}],
+            }),
+        )
+        result_text = json.loads(response["body"].read())["content"][0]["text"].strip()
+        ai_result = json.loads(result_text)
+    except Exception as e:
+        ai_result = {
+            "analysis": f"Couldn't generate AI analysis: {str(e)[:50]}",
+            "compatibility_score": len(shared) * 20 if shared else 10,
+            "vibe_user1": "Music Lover",
+            "vibe_user2": "Music Lover",
+        }
+
+    return TasteDNAResponse(
+        user1=user1,
+        user2=user2,
+        analysis=ai_result.get("analysis", ""),
+        compatibility_score=min(100, max(0, ai_result.get("compatibility_score", 50))),
+        shared_artists=list(shared)[:5],
+        unique_to_user1=list(unique1)[:5],
+        unique_to_user2=list(unique2)[:5],
+        vibe_user1=ai_result.get("vibe_user1", ""),
+        vibe_user2=ai_result.get("vibe_user2", ""),
+    )
