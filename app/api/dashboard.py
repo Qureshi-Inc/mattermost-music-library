@@ -1143,23 +1143,37 @@ Respond in EXACTLY this JSON format (no other text):
 }}"""
 
     try:
-        client = boto3.client("bedrock-runtime", region_name="us-east-1")
-        response = client.invoke_model(
-            modelId="us.anthropic.claude-sonnet-4-6",
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 300,
-                "temperature": 0.9,
-                "messages": [{"role": "user", "content": prompt}],
-            }),
-        )
-        result_text = json.loads(response["body"].read())["content"][0]["text"].strip()
-        ai_result = json.loads(result_text)
+        import asyncio
+        import re
+
+        def _call_bedrock():
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 300,
+                    "temperature": 0.9,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(response["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call_bedrock)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        # Extract JSON from response (Claude may wrap in code blocks)
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        if json_match:
+            ai_result = json.loads(json_match.group())
+        else:
+            ai_result = json.loads(result_text)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         ai_result = {
-            "analysis": f"Couldn't generate AI analysis: {str(e)[:50]}",
+            "analysis": f"Couldn't generate AI analysis: {type(e).__name__}: {str(e)[:80]}",
             "compatibility_score": len(shared) * 20 if shared else 10,
             "vibe_user1": "Music Lover",
             "vibe_user2": "Music Lover",
