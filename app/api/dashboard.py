@@ -1083,8 +1083,10 @@ class TasteDNAResponse(BaseModel):
 @router.get("/taste-dna/{user1}/{user2}", response_model=TasteDNAResponse)
 async def get_taste_dna(user1: str, user2: str, db: DbSession) -> TasteDNAResponse:
     """AI-powered taste DNA comparison between two users using Bedrock."""
-    import json
-    import boto3
+    cache_key = f"taste_dna_{user1}_{user2}"
+    cached = _get_cached(cache_key)
+    if cached:
+        return cached
 
     # Get user IDs
     uid1 = None
@@ -1184,7 +1186,7 @@ Respond in EXACTLY this JSON format (no other text):
             "vibe_user2": "Music Lover",
         }
 
-    return TasteDNAResponse(
+    response = TasteDNAResponse(
         user1=user1,
         user2=user2,
         analysis=ai_result.get("analysis", ""),
@@ -1195,6 +1197,8 @@ Respond in EXACTLY this JSON format (no other text):
         vibe_user1=ai_result.get("vibe_user1", ""),
         vibe_user2=ai_result.get("vibe_user2", ""),
     )
+    _set_cached(cache_key, response)
+    return response
 
 
 # --- AI Features ---
@@ -1299,6 +1303,9 @@ Respond in EXACTLY this JSON format:
 @router.get("/ai/vibe-check", response_model=AIVibeCheckResponse)
 async def get_ai_vibe_check(db: DbSession) -> AIVibeCheckResponse:
     """AI analyzes the entire library's current mood."""
+    cached = _get_cached("vibe_check")
+    if cached:
+        return cached
     import asyncio
     import re
 
@@ -1350,11 +1357,13 @@ Respond in EXACTLY this JSON format:
     except Exception as e:
         return AIVibeCheckResponse(vibe="Unknown", mood_emoji="🎵", description=f"AI unavailable: {str(e)[:50]}")
 
-    return AIVibeCheckResponse(
+    response = AIVibeCheckResponse(
         vibe=ai_result.get("vibe", "Vibing"),
         mood_emoji=ai_result.get("mood_emoji", "🎵"),
         description=ai_result.get("description", ""),
     )
+    _set_cached("vibe_check", response)
+    return response
 
 
 @router.get("/ai/playlist-name/{username}", response_model=AIPlaylistNameResponse)
@@ -1430,6 +1439,9 @@ Respond in EXACTLY this JSON format:
 @router.get("/ai/digest", response_model=AIDigestResponse)
 async def get_ai_digest(db: DbSession) -> AIDigestResponse:
     """AI-generated weekly digest of the library's activity."""
+    cached = _get_cached("digest")
+    if cached:
+        return cached
     import asyncio
     import re
 
@@ -1516,8 +1528,32 @@ Respond in EXACTLY this JSON format:
         traceback.print_exc()
         return AIDigestResponse(digest=f"AI unavailable: {type(e).__name__}: {str(e)[:80]}", highlights=[], vibe_shift="")
 
-    return AIDigestResponse(
+    response = AIDigestResponse(
         digest=ai_result.get("digest", ""),
         highlights=ai_result.get("highlights", [])[:3],
         vibe_shift=ai_result.get("vibe_shift", ""),
     )
+    _set_cached("digest", response)
+    return response
+
+
+# --- AI Response Cache ---
+# Cache AI responses in memory to avoid repeated Bedrock calls on every page load
+_ai_cache: dict[str, tuple[float, any]] = {}
+AI_CACHE_TTL = 3600  # 1 hour
+
+
+def _get_cached(key: str):
+    """Get cached AI response if not expired."""
+    import time
+    if key in _ai_cache:
+        ts, data = _ai_cache[key]
+        if time.time() - ts < AI_CACHE_TTL:
+            return data
+    return None
+
+
+def _set_cached(key: str, data):
+    """Cache an AI response."""
+    import time
+    _ai_cache[key] = (time.time(), data)
