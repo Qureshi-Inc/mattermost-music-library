@@ -393,13 +393,15 @@ class MattermostClient:
             url.rstrip(")],;!?. ") for url in raw_urls
         ))
 
-        # Detect @slaptastic commands
+        # Detect @slaptastic commands (skip 'whatsapp' — handled by WhatsApp worker)
         command: str | None = None
         command_args: str | None = None
         cmd_match = COMMAND_PATTERN.search(message_text)
         if cmd_match:
-            command = cmd_match.group(1).lower()
-            command_args = cmd_match.group(2).strip() if cmd_match.group(2) else None
+            cmd_name = cmd_match.group(1).lower()
+            if cmd_name != "whatsapp":
+                command = cmd_name
+                command_args = cmd_match.group(2).strip() if cmd_match.group(2) else None
 
         incoming = IncomingMessage(
             post_id=post_id,
