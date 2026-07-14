@@ -121,7 +121,10 @@ export class WhatsAppConnection extends EventEmitter {
 
     await this.socket.sendMessage(jid, {
       text,
-      mentions: mentions || [],
+      mentions: mentions && mentions.length > 0 ? mentions : undefined,
+    }, {
+      // @ts-ignore - disable link preview generation
+      linkPreview: null,
     });
   }
 
