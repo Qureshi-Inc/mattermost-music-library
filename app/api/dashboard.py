@@ -1122,7 +1122,7 @@ async def get_taste_dna(user1: str, user2: str, db: DbSession) -> TasteDNARespon
 
     prompt = f"""You are a music taste analyst for a friend group's shared music library called "Slapshare".
 
-Compare these two users' music taste and give a fun, savage, millennial-energy analysis.
+Compare these two users' music taste and give an insightful, warm, and celebratory analysis. Focus on what connects them musically, what makes each unique, and how they complement each other. Bring people together.
 
 {user1}'s library ({len(songs1)} songs):
 {user1_library}
@@ -1136,7 +1136,7 @@ Artists only {user2} has: {', '.join(list(unique2)[:10]) or 'None'}
 
 Respond in EXACTLY this JSON format (no other text):
 {{
-  "analysis": "<2-3 sentence savage but fun comparison of their taste. Be specific about artists/genres. Use slang.>",
+  "analysis": "<2-3 sentence insightful comparison highlighting what connects their taste, what makes each special, and how they complement each other. Be specific about artists/genres. Warm and celebratory tone.>",
   "compatibility_score": <0-100 integer>,
   "vibe_user1": "<3-4 word vibe label for {user1}, e.g. 'Late Night R&B Connoisseur'>",
   "vibe_user2": "<3-4 word vibe label for {user2}, e.g. 'Indie Rock Explorer'>"
