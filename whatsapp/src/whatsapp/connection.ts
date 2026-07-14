@@ -147,8 +147,8 @@ export class WhatsAppConnection extends EventEmitter {
     const participants = new Map<string, string>();
 
     for (const p of metadata.participants) {
-      // JID format: number@s.whatsapp.net
-      const number = p.id.replace(/@s\.whatsapp\.net$/, '');
+      // JID can be number@s.whatsapp.net or number@lid
+      const number = p.id.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '');
       participants.set(number, p.id);
     }
 
