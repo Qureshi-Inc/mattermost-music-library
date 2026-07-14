@@ -17,6 +17,11 @@ services:
     volumes:
       - jellyfin_config:/config
       - music_data:/media/music:ro
+      - type: bind
+        source: /media
+        target: /zurg
+        bind:
+          propagation: rslave
     restart: unless-stopped
 
 volumes:
