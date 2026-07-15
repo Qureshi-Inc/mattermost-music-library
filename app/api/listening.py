@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.api.deps import DbSession
+from app.models.comment import Comment
 from app.models.play_event import PlayEvent
 
 router = APIRouter(prefix="/listening", tags=["listening"])
@@ -490,4 +491,86 @@ async def get_full_engagement(db: DbSession) -> FullEngagementResponse:
         tracks=tracks,
         user_profiles=user_profiles,
         generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+# --- Comments / Reactions ---
+
+
+class CommentRequest(BaseModel):
+    username: str
+    track_id: str
+    title: str
+    artist: str
+    text: str
+    is_reaction: bool = False
+
+
+class CommentResponse(BaseModel):
+    id: str
+    username: str
+    track_id: str
+    title: str
+    artist: str
+    text: str
+    is_reaction: bool
+    created_at: str
+
+
+class CommentFeedResponse(BaseModel):
+    comments: list[CommentResponse]
+
+
+@router.post("/comment", response_model=CommentResponse)
+async def post_comment(body: CommentRequest, db: DbSession) -> CommentResponse:
+    """Post a comment or reaction on a track."""
+    comment = Comment(
+        username=body.username,
+        track_id=body.track_id,
+        title=body.title,
+        artist=body.artist,
+        text=body.text,
+        is_reaction=body.is_reaction,
+    )
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+    return CommentResponse(
+        id=str(comment.id),
+        username=comment.username,
+        track_id=comment.track_id,
+        title=comment.title,
+        artist=comment.artist,
+        text=comment.text,
+        is_reaction=comment.is_reaction,
+        created_at=comment.created_at.isoformat(),
+    )
+
+
+@router.get("/comments", response_model=CommentFeedResponse)
+async def get_comments_feed(
+    db: DbSession,
+    limit: int = Query(default=50, ge=1, le=200),
+    track_id: str | None = Query(default=None),
+) -> CommentFeedResponse:
+    """Get recent comments/reactions, optionally filtered by track."""
+    query = select(Comment).order_by(Comment.created_at.desc()).limit(limit)
+    if track_id:
+        query = query.where(Comment.track_id == track_id)
+    result = await db.execute(query)
+    comments = result.scalars().all()
+    return CommentFeedResponse(
+        comments=[
+            CommentResponse(
+                id=str(c.id),
+                username=c.username,
+                track_id=c.track_id,
+                title=c.title,
+                artist=c.artist,
+                text=c.text,
+                is_reaction=c.is_reaction,
+                created_at=c.created_at.isoformat(),
+            )
+            for c in comments
+        ]
     )
