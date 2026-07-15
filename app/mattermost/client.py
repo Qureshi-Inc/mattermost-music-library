@@ -22,11 +22,13 @@ logger = logging.getLogger(__name__)
 
 # Music link URL patterns
 MUSIC_URL_PATTERNS: list[re.Pattern[str]] = [
-    # YouTube: youtube.com/watch?v=... or youtu.be/...
+    # YouTube: youtube.com/watch?v=..., youtu.be/..., shorts, music.youtube.com, m.youtube.com
     re.compile(
-        r"https?://(?:www\.)?youtube\.com/watch\?[^\s]*v=[A-Za-z0-9_-]+[^\s]*"
+        r"https?://(?:www\.|m\.)?youtube\.com/watch\?[^\s]*v=[A-Za-z0-9_-]+[^\s]*"
     ),
     re.compile(r"https?://youtu\.be/[A-Za-z0-9_-]+[^\s]*"),
+    re.compile(r"https?://(?:www\.|m\.)?youtube\.com/shorts/[A-Za-z0-9_-]+[^\s]*"),
+    re.compile(r"https?://music\.youtube\.com/watch\?[^\s]*v=[A-Za-z0-9_-]+[^\s]*"),
     # Spotify: open.spotify.com/track/...
     re.compile(r"https?://open\.spotify\.com/track/[A-Za-z0-9]+[^\s]*"),
     # Apple Music: music.apple.com/...
@@ -36,7 +38,9 @@ MUSIC_URL_PATTERNS: list[re.Pattern[str]] = [
 # Combined pattern to extract any music URL from text
 MUSIC_URL_COMBINED = re.compile(
     r"("
-    r"https?://(?:www\.)?youtube\.com/watch\?[^\s]*v=[A-Za-z0-9_-]+[^\s]*"
+    r"https?://(?:www\.|m\.)?youtube\.com/watch\?[^\s]*v=[A-Za-z0-9_-]+[^\s]*"
+    r"|https?://(?:www\.|m\.)?youtube\.com/shorts/[A-Za-z0-9_-]+[^\s]*"
+    r"|https?://music\.youtube\.com/watch\?[^\s]*v=[A-Za-z0-9_-]+[^\s]*"
     r"|https?://youtu\.be/[A-Za-z0-9_-]+[^\s]*"
     r"|https?://open\.spotify\.com/track/[A-Za-z0-9]+[^\s]*"
     r"|https?://music\.apple\.com/[^\s]+"

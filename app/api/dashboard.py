@@ -29,6 +29,7 @@ USER_DISPLAY_NAMES: dict[str, str] = {
     "dwgmwjsuufnk7g5hm9diwb6hyy": "zubair221b",
     "pwdagarckfdijypad9of9ymprh": "nooramin40",
     "faujhgzs73do7j3tuide4jtsxc": "deception",
+    "rsdrmquggi8q9r36kt1pjx6s9e": "asamad89",
 }
 
 # Bot user IDs to exclude from leaderboard
@@ -42,6 +43,7 @@ USER_COLORS: dict[str, str] = {
     "zubair221b": "#10b981",
     "nooramin40": "#f59e0b",
     "deception": "#ec4899",
+    "asamad89": "#3b82f6",
     "guest": "#6b7280",
 }
 
@@ -151,7 +153,7 @@ async def get_stats(db: DbSession) -> StatsResponse:
     # Total contributors
     contributors_result = await db.execute(
         select(func.count(func.distinct(Job.requester_user_id))).where(
-            Job.status == JobStatus.COMPLETE
+            Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS)
         )
     )
     total_contributors = contributors_result.scalar_one()
@@ -161,6 +163,7 @@ async def get_stats(db: DbSession) -> StatsResponse:
     week_result = await db.execute(
         select(func.count(Job.id)).where(
             Job.status == JobStatus.COMPLETE,
+            Job.requester_user_id.notin_(BOT_USER_IDS),
             Job.created_at >= one_week_ago,
         )
     )
@@ -169,7 +172,7 @@ async def get_stats(db: DbSession) -> StatsResponse:
     # Top artist
     top_artist_result = await db.execute(
         select(Job.artist, func.count(Job.id).label("cnt"))
-        .where(Job.status == JobStatus.COMPLETE, Job.artist.isnot(None))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.artist.isnot(None))
         .group_by(Job.artist)
         .order_by(func.count(Job.id).desc())
         .limit(1)
@@ -180,7 +183,7 @@ async def get_stats(db: DbSession) -> StatsResponse:
     # Total unique artists
     artists_result = await db.execute(
         select(func.count(func.distinct(Job.artist))).where(
-            Job.status == JobStatus.COMPLETE, Job.artist.isnot(None)
+            Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.artist.isnot(None)
         )
     )
     total_artists = artists_result.scalar_one()
@@ -408,7 +411,7 @@ async def get_artists(
             func.count(Job.id).label("cnt"),
             func.max(Job.album).label("latest_album"),
         )
-        .where(Job.status == JobStatus.COMPLETE, Job.artist.isnot(None))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.artist.isnot(None))
         .group_by(Job.artist)
         .order_by(func.count(Job.id).desc())
         .limit(limit)
@@ -789,7 +792,7 @@ async def get_hipster_index(db: DbSession) -> HipsterResponse:
     """Get hipster index - who adds the most obscure artists."""
     result = await db.execute(
         select(Job.requester_user_id, Job.artist)
-        .where(Job.status == JobStatus.COMPLETE, Job.artist.isnot(None))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.artist.isnot(None))
     )
     rows = result.all()
 
@@ -1013,7 +1016,7 @@ async def get_hall_of_fame(db: DbSession) -> HallOfFameResponse:
     # Most submitted artist
     top_artist_result = await db.execute(
         select(Job.artist, func.count(Job.id).label("cnt"))
-        .where(Job.status == JobStatus.COMPLETE, Job.artist.isnot(None))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.artist.isnot(None))
         .group_by(Job.artist)
         .order_by(func.count(Job.id).desc())
         .limit(1)
@@ -1030,7 +1033,7 @@ async def get_hall_of_fame(db: DbSession) -> HallOfFameResponse:
     # Longest title
     longest_result = await db.execute(
         select(Job)
-        .where(Job.status == JobStatus.COMPLETE, Job.title.isnot(None))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.title.isnot(None))
         .order_by(func.length(Job.title).desc())
         .limit(1)
     )
