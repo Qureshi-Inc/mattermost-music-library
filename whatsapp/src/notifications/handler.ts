@@ -2,9 +2,8 @@
  * Notification handler - bridges Mattermost reply events to WhatsApp notifications.
  *
  * When a reply is detected in the Slapshare channel:
- * 1. Fetch the root post to identify the original poster
- * 2. Check if the original poster has a linked WhatsApp account
- * 3. Queue a WhatsApp notification with @mention
+ * 1. Notify the original poster (unless it's a self-reply)
+ * 2. Notify any @mentioned users in the reply
  */
 
 import { MattermostClient } from '../mattermost/client';
@@ -34,34 +33,53 @@ export class NotificationHandler {
 
     const originalPosterUserId = rootPost.user_id;
 
-    // Don't notify if replying to yourself
-    if (reply.userId === originalPosterUserId) {
-      console.log('[handler] Skipping self-reply notification');
-      return;
-    }
-
-    // Check deduplication before even queuing
-    if (this.db.hasNotificationBeenSent(reply.postId, originalPosterUserId)) {
-      console.log('[handler] Notification already sent for this post+recipient');
-      return;
-    }
-
-    // Check if the original poster has a linked WhatsApp account
-    const link = this.db.getUserLink(originalPosterUserId);
-    if (!link) {
-      console.log(`[handler] Original poster ${originalPosterUserId} has no WhatsApp link`);
-      return;
-    }
-
-    if (link.muted) {
-      console.log(`[handler] Original poster ${link.mattermost_username} has muted notifications`);
-      return;
-    }
-
     // Truncate message for preview
     let messagePreview = reply.message;
     if (messagePreview.length > 300) {
       messagePreview = messagePreview.substring(0, 297) + '...';
+    }
+
+    // 1. Notify the original poster (unless self-reply)
+    if (reply.userId !== originalPosterUserId) {
+      this.notifyUser(originalPosterUserId, reply, messagePreview);
+    }
+
+    // 2. Notify any @mentioned users
+    const mentions = this.extractMentions(reply.message);
+    for (const mentionedUsername of mentions) {
+      // Find the mentioned user's Mattermost ID from linked users
+      const allLinked = this.db.getAllLinkedUsers();
+      const mentionedLink = allLinked.find(
+        (u) => u.mattermost_username.toLowerCase() === mentionedUsername.toLowerCase()
+      );
+
+      if (!mentionedLink) continue;
+
+      // Don't notify the sender or someone already notified as OP
+      if (mentionedLink.mattermost_user_id === reply.userId) continue;
+      if (mentionedLink.mattermost_user_id === originalPosterUserId) continue;
+
+      this.notifyUser(mentionedLink.mattermost_user_id, reply, messagePreview);
+    }
+  }
+
+  private notifyUser(recipientUserId: string, reply: ParsedReply, messagePreview: string): void {
+    // Check deduplication
+    if (this.db.hasNotificationBeenSent(reply.postId, recipientUserId)) {
+      console.log(`[handler] Notification already sent for post ${reply.postId} -> ${recipientUserId}`);
+      return;
+    }
+
+    // Check if recipient has a linked WhatsApp account
+    const link = this.db.getUserLink(recipientUserId);
+    if (!link) {
+      console.log(`[handler] User ${recipientUserId} has no WhatsApp link`);
+      return;
+    }
+
+    if (link.muted) {
+      console.log(`[handler] User ${link.mattermost_username} has muted notifications`);
+      return;
     }
 
     // Queue the notification
@@ -70,7 +88,7 @@ export class NotificationHandler {
       root_id: reply.rootId,
       sender_user_id: reply.userId,
       sender_username: reply.username,
-      recipient_user_id: originalPosterUserId,
+      recipient_user_id: recipientUserId,
       message_preview: messagePreview,
       channel_id: reply.channelId,
     });
@@ -78,5 +96,18 @@ export class NotificationHandler {
     console.log(
       `[handler] Queued notification #${queueId}: ${reply.username} -> ${link.mattermost_username}`
     );
+  }
+
+  private extractMentions(message: string): string[] {
+    const mentionRegex = /@(\w+)/g;
+    const mentions: string[] = [];
+    let match;
+    while ((match = mentionRegex.exec(message)) !== null) {
+      const username = match[1];
+      if (username !== 'slaptastic' && username !== 'slapper' && username !== 'channel' && username !== 'all' && username !== 'here') {
+        mentions.push(username);
+      }
+    }
+    return mentions;
   }
 }
