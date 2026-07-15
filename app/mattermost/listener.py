@@ -31,11 +31,14 @@ async def run_websocket_listener() -> None:
     client = MattermostClient(config)
     command_handler = CommandHandler(client=client)
 
+    _recent_links: dict[str, float] = {}
+
     async def on_music_link(message: IncomingMessage) -> None:
         """Handle a detected music link in the channel.
 
         Only processes the first music URL per message to avoid duplicates.
         """
+        import time
         from app.database import async_session_factory
         from app.jobs.queue import JobQueue
         from app.models.job import SourcePlatform
@@ -45,6 +48,18 @@ async def run_websocket_listener() -> None:
 
         # Only process the first URL per message
         url = message.music_urls[0]
+
+        # Dedup: ignore same URL from same user within 60 seconds
+        dedup_key = f"{message.user_id}:{url}"
+        now = time.time()
+        if dedup_key in _recent_links and now - _recent_links[dedup_key] < 60:
+            logger.info("Ignoring duplicate link from %s (within 60s)", message.username)
+            return
+        _recent_links[dedup_key] = now
+        # Clean old entries
+        for k in list(_recent_links):
+            if now - _recent_links[k] > 120:
+                del _recent_links[k]
 
         # Determine source platform from URL
         platform = SourcePlatform.UNKNOWN
