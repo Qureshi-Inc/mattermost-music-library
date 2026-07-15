@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DbSession
 from app.models.job import Job, JobStatus
+from app.models.play_event import PlayEvent
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -136,6 +137,20 @@ class UserProfileResponse(BaseModel):
     first_submission: str | None
     latest_submission: str | None
     submissions: list[RecentEntry]
+
+
+class HotTrackEntry(BaseModel):
+    track_id: str
+    title: str
+    artist: str
+    album: str | None
+    play_count: int
+    unique_listeners: int
+
+
+class HotTracksResponse(BaseModel):
+    tracks: list[HotTrackEntry]
+    period_hours: int
 
 
 # --- Endpoints ---
@@ -270,6 +285,42 @@ async def get_stats(db: DbSession) -> StatsResponse:
         longest_streak_user=longest_streak_user,
         longest_streak_days=longest_streak_days,
     )
+
+
+@router.get("/hot", response_model=HotTracksResponse)
+async def get_hot_tracks(db: DbSession) -> HotTracksResponse:
+    """Get trending tracks based on play counts in the last 24 hours."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    result = await db.execute(
+        select(
+            PlayEvent.track_id,
+            PlayEvent.title,
+            PlayEvent.artist,
+            PlayEvent.album,
+            func.count(PlayEvent.id).label("play_count"),
+            func.count(func.distinct(PlayEvent.username)).label("unique_listeners"),
+        )
+        .where(PlayEvent.created_at >= cutoff, PlayEvent.skipped == False)
+        .group_by(PlayEvent.track_id, PlayEvent.title, PlayEvent.artist, PlayEvent.album)
+        .order_by(func.count(PlayEvent.id).desc())
+        .limit(6)
+    )
+    rows = result.all()
+
+    tracks = [
+        HotTrackEntry(
+            track_id=row[0],
+            title=row[1],
+            artist=row[2],
+            album=row[3],
+            play_count=row[4],
+            unique_listeners=row[5],
+        )
+        for row in rows
+    ]
+
+    return HotTracksResponse(tracks=tracks, period_hours=24)
 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
