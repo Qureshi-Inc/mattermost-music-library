@@ -70,14 +70,20 @@ export class NotificationQueue {
         }
 
         try {
+          const isMention = notification.message_preview.startsWith('[mention]');
+          const cleanPreview = isMention
+            ? notification.message_preview.slice(9)
+            : notification.message_preview;
+
           const data: NotificationData = {
             originalPosterUsername: link.mattermost_username,
             originalPosterJid: link.whatsapp_jid,
             replierUsername: notification.sender_username,
-            messagePreview: notification.message_preview,
+            messagePreview: cleanPreview,
             postId: notification.post_id,
             teamName: this.config.mattermost.teamName,
             mattermostUrl: this.config.mattermost.url,
+            isMention,
           };
 
           const { text, mentions } = formatReplyNotification(data);

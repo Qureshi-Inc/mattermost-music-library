@@ -14,6 +14,7 @@ export interface NotificationData {
   postId: string;
   teamName: string;
   mattermostUrl: string;
+  isMention?: boolean;
 }
 
 /**
@@ -48,8 +49,12 @@ export function formatReplyNotification(data: NotificationData): {
   // Build the post permalink - use regular https URL (Mattermost app handles via deep link)
   const permalink = `${data.mattermostUrl}/${data.teamName}/pl/${data.postId}`;
 
+  const action = data.isMention
+    ? `${data.replierUsername} mentioned you in a post:`
+    : `${data.replierUsername} replied to your Slapshare post:`;
+
   const text = [
-    `${mentionText} \u{1F3B5} ${data.replierUsername} replied to your Slapshare post:`,
+    `${mentionText} \u{1F3B5} ${action}`,
     '',
     `"${preview}"`,
     '',

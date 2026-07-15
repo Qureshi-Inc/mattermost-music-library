@@ -59,7 +59,7 @@ export class NotificationHandler {
       if (mentionedLink.mattermost_user_id === reply.userId) continue;
       if (mentionedLink.mattermost_user_id === originalPosterUserId) continue;
 
-      this.notifyUser(mentionedLink.mattermost_user_id, reply, messagePreview);
+      this.notifyUser(mentionedLink.mattermost_user_id, reply, `[mention]${messagePreview}`);
     }
   }
 
