@@ -1023,20 +1023,23 @@ async def get_head_to_head(user1: str, user2: str, db: DbSession) -> HeadToHeadR
 
     async def get_user_data(user_id: str | None):
         if user_id is None:
-            return [], set(), defaultdict(int)
+            return 0, set(), defaultdict(int)
         r = await db.execute(
             select(Job).where(Job.status == JobStatus.COMPLETE, Job.requester_user_id == user_id)
         )
         jobs = r.scalars().all()
+        # Count DISTINCT titles (same as the leaderboard) so a user's song count
+        # is consistent everywhere — raw job count double-counts re-adds.
+        song_count = len({j.title for j in jobs if j.title})
         artists = set(j.artist for j in jobs if j.artist)
         platforms: dict[str, int] = defaultdict(int)
         for j in jobs:
             p = j.source_platform.value if j.source_platform else "unknown"
             platforms[p] += 1
-        return jobs, artists, platforms
+        return song_count, artists, platforms
 
-    jobs1, artists1, platforms1 = await get_user_data(uid1)
-    jobs2, artists2, platforms2 = await get_user_data(uid2)
+    songs1, artists1, platforms1 = await get_user_data(uid1)
+    songs2, artists2, platforms2 = await get_user_data(uid2)
 
     shared = list(artists1 & artists2)[:10]
     unique1 = list(artists1 - artists2)[:10]
@@ -1047,8 +1050,8 @@ async def get_head_to_head(user1: str, user2: str, db: DbSession) -> HeadToHeadR
         user2=user2,
         user1_color=USER_COLORS.get(user1, "#6b7280"),
         user2_color=USER_COLORS.get(user2, "#6b7280"),
-        user1_songs=len(jobs1),
-        user2_songs=len(jobs2),
+        user1_songs=songs1,
+        user2_songs=songs2,
         user1_artists=len(artists1),
         user2_artists=len(artists2),
         user1_platforms=dict(platforms1),
