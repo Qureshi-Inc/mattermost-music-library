@@ -301,7 +301,11 @@ async def get_hot_tracks(db: DbSession) -> HotTracksResponse:
             func.count(PlayEvent.id).label("play_count"),
             func.count(func.distinct(PlayEvent.username)).label("unique_listeners"),
         )
-        .where(PlayEvent.created_at >= cutoff, PlayEvent.skipped == False)
+        .where(
+            PlayEvent.created_at >= cutoff,
+            PlayEvent.skipped == False,
+            PlayEvent.source != "thumb",
+        )
         .group_by(PlayEvent.track_id, PlayEvent.title, PlayEvent.artist, PlayEvent.album)
         .order_by(func.count(PlayEvent.id).desc())
         .limit(6)

@@ -30,6 +30,12 @@ _DASHBOARD_TO_JELLYFIN = {
 }
 
 
+def _norm_user(name: str) -> str:
+    """Normalize a username for storage so casing never splits one person
+    into multiple identities (e.g. 'Moiz' vs 'moiz')."""
+    return (name or "").strip().lower()
+
+
 def _name_variants(name: str) -> set[str]:
     """All names a mentioned user might be registered under."""
     n = name.strip()
@@ -175,7 +181,7 @@ async def record_play(body: PlayEventRequest, db: DbSession) -> PlayEventRespons
     thumbs = body.thumbs if body.thumbs in (-1, 0, 1) else 0
 
     event = PlayEvent(
-        username=body.username,
+        username=_norm_user(body.username),
         track_id=body.track_id,
         title=body.title,
         artist=body.artist,
@@ -208,7 +214,7 @@ async def record_play(body: PlayEventRequest, db: DbSession) -> PlayEventRespons
 async def record_skip(body: PlayEventRequest, db: DbSession) -> dict:
     """Record a skip event (listened < 15 seconds then changed)."""
     event = PlayEvent(
-        username=body.username,
+        username=_norm_user(body.username),
         track_id=body.track_id,
         title=body.title,
         artist=body.artist,
@@ -231,7 +237,11 @@ async def get_now_listening(db: DbSession) -> NowListeningResponse:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
     result = await db.execute(
         select(PlayEvent)
-        .where(PlayEvent.created_at >= cutoff, PlayEvent.skipped == False)
+        .where(
+            PlayEvent.created_at >= cutoff,
+            PlayEvent.skipped == False,
+            PlayEvent.source != "thumb",
+        )
         .order_by(PlayEvent.created_at.desc())
     )
     events = result.scalars().all()
@@ -297,7 +307,7 @@ async def get_listening_stats(
     period: str = Query(default="all", regex="^(week|month|year|all)$"),
 ) -> ListeningStatsResponse:
     """Get aggregate listening stats."""
-    filters = [PlayEvent.skipped == False]
+    filters = [PlayEvent.skipped == False, PlayEvent.source != "thumb"]
     if period == "week":
         filters.append(PlayEvent.created_at >= datetime.now(timezone.utc) - timedelta(days=7))
     elif period == "month":
@@ -378,7 +388,11 @@ async def get_user_listening(username: str, db: DbSession) -> UserListeningProfi
     """Get a user's listening profile with behavioral patterns."""
     result = await db.execute(
         select(PlayEvent)
-        .where(PlayEvent.username == username, PlayEvent.skipped == False)
+        .where(
+            PlayEvent.username == username,
+            PlayEvent.skipped == False,
+            PlayEvent.source != "thumb",
+        )
         .order_by(PlayEvent.created_at.desc())
     )
     events = result.scalars().all()
@@ -733,7 +747,7 @@ async def record_thumb(body: ThumbRequest, db: DbSession) -> dict:
     """
     thumbs = body.thumbs if body.thumbs in (-1, 0, 1) else 0
     event = PlayEvent(
-        username=body.username,
+        username=_norm_user(body.username),
         track_id=body.track_id,
         title=body.title or "",
         artist=body.artist or "",
