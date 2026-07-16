@@ -1,5 +1,7 @@
 """Listening activity API — play events, now listening, stats for SlapPlayer."""
 
+import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -9,9 +11,37 @@ from sqlalchemy import func, select
 
 from app.api.deps import DbSession
 from app.models.comment import Comment
+from app.models.device_token import DeviceToken
 from app.models.play_event import PlayEvent
+from app.notifications.fcm import send_push
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/listening", tags=["listening"])
+
+# Dashboard display name <-> Jellyfin login name (device tokens use Jellyfin names)
+_DASHBOARD_TO_JELLYFIN = {
+    "moiz": "moiz",
+    "themoosecompany": "mutasif",
+    "nooramin40": "noor",
+    "shahraiz": "shahraiz",
+    "asamad89": "Samad",
+    "deception": "brendan",
+}
+
+
+def _name_variants(name: str) -> set[str]:
+    """All names a mentioned user might be registered under."""
+    n = name.strip()
+    variants = {n, n.lower()}
+    # dashboard -> jellyfin
+    if n.lower() in _DASHBOARD_TO_JELLYFIN:
+        variants.add(_DASHBOARD_TO_JELLYFIN[n.lower()])
+    # jellyfin -> dashboard
+    for dash, jelly in _DASHBOARD_TO_JELLYFIN.items():
+        if jelly.lower() == n.lower():
+            variants.add(dash)
+    return {v.lower() for v in variants}
 
 
 # --- Request/Response Models ---
@@ -521,6 +551,26 @@ class CommentFeedResponse(BaseModel):
     comments: list[CommentResponse]
 
 
+class RegisterDeviceRequest(BaseModel):
+    username: str
+    token: str
+
+
+@router.post("/register-device")
+async def register_device(body: RegisterDeviceRequest, db: DbSession) -> dict:
+    """Register (or update) an FCM device token for a user."""
+    existing = await db.execute(
+        select(DeviceToken).where(DeviceToken.token == body.token)
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        row.username = body.username
+    else:
+        db.add(DeviceToken(username=body.username, token=body.token))
+    await db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/comment", response_model=CommentResponse)
 async def post_comment(body: CommentRequest, db: DbSession) -> CommentResponse:
     """Post a comment or reaction on a track."""
@@ -535,6 +585,13 @@ async def post_comment(body: CommentRequest, db: DbSession) -> CommentResponse:
     db.add(comment)
     await db.commit()
     await db.refresh(comment)
+
+    # Push notifications for @mentions (best-effort, never blocks the response)
+    try:
+        await _notify_mentions(db, body)
+    except Exception as e:
+        logger.warning("Comment push failed: %s", e)
+
     return CommentResponse(
         id=str(comment.id),
         username=comment.username,
@@ -545,6 +602,38 @@ async def post_comment(body: CommentRequest, db: DbSession) -> CommentResponse:
         is_reaction=comment.is_reaction,
         created_at=comment.created_at.isoformat(),
     )
+
+
+async def _notify_mentions(db: DbSession, body: CommentRequest) -> None:
+    """Find @mentions in the comment and push to those users' devices."""
+    mentions = re.findall(r"@(\w+)", body.text or "")
+    if not mentions:
+        return
+
+    commenter = body.username
+    for mention in mentions:
+        if mention.lower() in ("channel", "all", "here", "slaptastic", "slapper"):
+            continue
+        variants = _name_variants(mention)
+        # Don't notify the commenter about their own mention
+        if commenter.lower() in variants:
+            continue
+
+        result = await db.execute(
+            select(DeviceToken.token).where(
+                func.lower(DeviceToken.username).in_(variants)
+            )
+        )
+        tokens = [r[0] for r in result.all()]
+        if tokens:
+            title = f"{commenter} mentioned you"
+            song = body.title or "a track"
+            send_push(
+                tokens,
+                title=title,
+                body=f'{body.text}  ·  on "{song}"',
+                data={"track_id": body.track_id, "type": "mention"},
+            )
 
 
 @router.get("/comments", response_model=CommentFeedResponse)
