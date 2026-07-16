@@ -513,14 +513,15 @@ async def get_user_profile(username: str, db: DbSession) -> UserProfileResponse:
     )
     jobs = result.scalars().all()
 
-    total_songs = len(jobs)
+    # Count unique songs (distinct titles), matching the leaderboard
+    total_songs = len({j.title for j in jobs if j.title})
 
-    # Calculate rank
+    # Calculate rank by distinct-title count (matches leaderboard ranking)
     rank_result = await db.execute(
-        select(Job.requester_user_id, func.count(Job.id).label("cnt"))
-        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS))
+        select(Job.requester_user_id, func.count(func.distinct(Job.title)).label("cnt"))
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.title.isnot(None))
         .group_by(Job.requester_user_id)
-        .order_by(func.count(Job.id).desc())
+        .order_by(func.count(func.distinct(Job.title)).desc())
     )
     rank_rows = rank_result.all()
     rank = 0
@@ -937,28 +938,32 @@ async def get_streaks(db: DbSession) -> StreaksResponse:
 async def get_personalities(db: DbSession) -> PersonalitiesResponse:
     """Get monthly personality cards based on submission patterns."""
     result = await db.execute(
-        select(Job.requester_user_id, Job.source_platform, Job.artist)
-        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS))
+        select(Job.requester_user_id, Job.source_platform, Job.artist, Job.title)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.title.isnot(None))
     )
     rows = result.all()
 
     user_data: dict[str, dict] = defaultdict(lambda: {
         "platforms": defaultdict(int),
         "artists": set(),
-        "total": 0,
+        "titles": set(),
     })
 
     for row in rows:
         username = _get_display_name(row[0])
         platform = row[1].value if hasattr(row[1], "value") else str(row[1])
+        title = row[3]
+        # Count each unique song once (matches leaderboard's distinct-title count)
+        if title in user_data[username]["titles"]:
+            continue
+        user_data[username]["titles"].add(title)
         user_data[username]["platforms"][platform] += 1
         if row[2]:
             user_data[username]["artists"].add(row[2])
-        user_data[username]["total"] += 1
 
     cards = []
     for username, data in user_data.items():
-        total = data["total"]
+        total = len(data["titles"])
         num_artists = len(data["artists"])
         dominant_platform = max(data["platforms"], key=data["platforms"].get) if data["platforms"] else "unknown"
 
