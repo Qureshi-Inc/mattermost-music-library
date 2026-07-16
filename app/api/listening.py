@@ -534,6 +534,162 @@ async def get_full_engagement(db: DbSession) -> FullEngagementResponse:
     )
 
 
+# --- Insights / recommendation algorithm ---
+
+
+class ScoredTrack(BaseModel):
+    track_id: str
+    title: str
+    artist: str
+    score: float
+    play_count: int
+    unique_listeners: int
+    thumb_ups: int
+    thumb_downs: int
+    skip_rate: float
+    avg_completion: float
+
+
+class InsightsResponse(BaseModel):
+    trending: list[ScoredTrack]        # rising fast recently
+    squad_favorites: list[ScoredTrack]  # highest all-time affinity
+    hidden_gems: list[ScoredTrack]      # loved but few listeners
+    recommended_for_user: list[ScoredTrack]  # personalized (if username given)
+    generated_at: str
+
+
+def _affinity_score(d: dict) -> float:
+    """Composite affinity: rewards plays, completion, thumbs & reach; penalizes skips.
+
+    Tunable weights — this is the core signal for surfacing what the squad loves.
+    """
+    plays = d["plays"]
+    skips = d["skips"]
+    total_actions = plays + skips
+    skip_rate = skips / total_actions if total_actions else 0.0
+    completion = sum(d["durations"]) / len(d["durations"]) if d["durations"] else 0.0
+    reach = len(d["listeners"])
+    thumb_net = d["thumb_ups"] - d["thumb_downs"]
+
+    return round(
+        plays * 1.0
+        + completion * 5.0
+        + reach * 3.0
+        + thumb_net * 4.0
+        - skip_rate * 6.0,
+        2,
+    )
+
+
+@router.get("/insights", response_model=InsightsResponse)
+async def get_insights(
+    db: DbSession,
+    username: str | None = Query(default=None),
+) -> InsightsResponse:
+    """Actionable insights derived from all engagement signals.
+
+    - trending: most affinity gained in the last 7 days
+    - squad_favorites: highest all-time affinity
+    - hidden_gems: high completion + thumbs but <=1 listener
+    - recommended_for_user: tracks favored by users with similar taste (artist overlap)
+    """
+    result = await db.execute(
+        select(PlayEvent).order_by(PlayEvent.created_at.desc()).limit(10000)
+    )
+    events = result.scalars().all()
+
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+
+    def blank():
+        return {"title": "", "artist": "", "plays": 0, "skips": 0,
+                "thumb_ups": 0, "thumb_downs": 0, "listeners": set(), "durations": []}
+
+    all_time: dict[str, dict] = defaultdict(blank)
+    recent: dict[str, dict] = defaultdict(blank)
+    user_artists: dict[str, set] = defaultdict(set)  # taste profile per user
+
+    for ev in events:
+        for bucket in (all_time, recent if ev.created_at and ev.created_at.replace(tzinfo=timezone.utc) >= week_ago else None,):
+            if bucket is None:
+                continue
+            t = bucket[ev.track_id]
+            t["title"] = ev.title
+            t["artist"] = ev.artist
+            if ev.skipped:
+                t["skips"] += 1
+            else:
+                t["plays"] += 1
+            if ev.thumbs > 0:
+                t["thumb_ups"] += 1
+            elif ev.thumbs < 0:
+                t["thumb_downs"] += 1
+            t["listeners"].add(ev.username)
+            if ev.duration_seconds > 0:
+                t["durations"].append(min(ev.listened_seconds / ev.duration_seconds, 1.0))
+        if not ev.skipped and ev.artist:
+            user_artists[ev.username].add(ev.artist)
+
+    def to_scored(tid: str, d: dict) -> ScoredTrack:
+        plays, skips = d["plays"], d["skips"]
+        total = plays + skips
+        return ScoredTrack(
+            track_id=tid,
+            title=d["title"],
+            artist=d["artist"],
+            score=_affinity_score(d),
+            play_count=plays,
+            unique_listeners=len(d["listeners"]),
+            thumb_ups=d["thumb_ups"],
+            thumb_downs=d["thumb_downs"],
+            skip_rate=round(skips / total, 2) if total else 0.0,
+            avg_completion=round(sum(d["durations"]) / len(d["durations"]), 2) if d["durations"] else 0.0,
+        )
+
+    squad_favorites = sorted(
+        (to_scored(tid, d) for tid, d in all_time.items()),
+        key=lambda s: s.score, reverse=True,
+    )[:15]
+
+    trending = sorted(
+        (to_scored(tid, d) for tid, d in recent.items() if d["plays"] > 0),
+        key=lambda s: s.score, reverse=True,
+    )[:15]
+
+    hidden_gems = sorted(
+        (
+            to_scored(tid, d) for tid, d in all_time.items()
+            if len(d["listeners"]) <= 1 and d["plays"] >= 2
+            and (sum(d["durations"]) / len(d["durations"]) if d["durations"] else 0) >= 0.7
+        ),
+        key=lambda s: s.score, reverse=True,
+    )[:10]
+
+    # Personalized: score tracks the user hasn't played, weighted by taste overlap
+    recommended: list[ScoredTrack] = []
+    if username:
+        my_artists = user_artists.get(username, set())
+        my_tracks = {ev.track_id for ev in events if ev.username == username and not ev.skipped}
+        candidates = []
+        for tid, d in all_time.items():
+            if tid in my_tracks:
+                continue
+            base = _affinity_score(d)
+            # boost if the track's artist is in the user's taste profile
+            overlap_boost = 8.0 if d["artist"] in my_artists else 0.0
+            candidates.append((base + overlap_boost, tid, d))
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        recommended = [to_scored(tid, d) for _, tid, d in candidates[:15]]
+
+    return InsightsResponse(
+        trending=trending,
+        squad_favorites=squad_favorites,
+        hidden_gems=hidden_gems,
+        recommended_for_user=recommended,
+        generated_at=now.isoformat(),
+    )
+
+
 # --- Comments / Reactions ---
 
 
