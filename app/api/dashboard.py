@@ -1829,6 +1829,191 @@ async def get_ai_playlists_cached() -> AIPlaylistsResponse:
     )
 
 
+# --- Weekly AI Playlist (single curated mix, refreshes weekly) ---
+
+AI_WEEKLY_TTL = 7 * 86400  # 7 days
+
+
+class AIWeeklyTrack(BaseModel):
+    track_id: str | None = None  # Jellyfin item id (null if not matched)
+    title: str
+    artist: str
+
+
+class AIWeeklyPlaylistResponse(BaseModel):
+    name: str
+    description: str
+    tracks: list[AIWeeklyTrack]
+    generated_at: str
+    week_of: str  # e.g. "2026-07-13" (Monday of the week)
+
+
+class SaveWeeklyPlaylistResponse(BaseModel):
+    jellyfin_playlist_id: str | None
+    saved: int
+    name: str
+
+
+def _iso_week_monday() -> str:
+    """Monday of the current ISO week — the cache/version key for the weekly mix."""
+    from datetime import date, timedelta
+    today = datetime.now(timezone.utc).date()
+    monday = today - timedelta(days=today.weekday())
+    return monday.isoformat()
+
+
+async def _build_weekly_playlist(db: DbSession) -> AIWeeklyPlaylistResponse:
+    """Curate one themed weekly playlist from the shared library via Bedrock,
+    resolving each pick to a Jellyfin track id so it plays in-app. NOT a
+    Jellyfin playlist — just a curated list the user can optionally save."""
+    import asyncio
+    import re
+
+    from app.config import get_settings
+    from app.library.jellyfin import JellyfinClient
+
+    result = await db.execute(
+        select(Job.title, Job.artist, Job.album, Job.requester_user_id, Job.created_at)
+        .where(Job.status == JobStatus.COMPLETE, Job.requester_user_id.notin_(BOT_USER_IDS), Job.title.isnot(None))
+        .order_by(Job.created_at.desc())
+    )
+    rows = result.all()
+    week_of = _iso_week_monday()
+
+    if not rows:
+        return AIWeeklyPlaylistResponse(
+            name="This Week's Mix", description="No songs yet!", tracks=[],
+            generated_at=datetime.now(timezone.utc).isoformat(), week_of=week_of,
+        )
+
+    # De-dupe by title, keep newest, build the AI context.
+    seen: set[str] = set()
+    library_lines = []
+    for title, artist, album, uid, created in rows:
+        key = (title or "").lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        library_lines.append(f"- {artist or 'Unknown'} - {title}")
+    library_text = "\n".join(library_lines[:120])
+
+    prompt = f"""You are the resident DJ for a friend group's shared music library called "Slapshare".
+Curate ONE cohesive weekly playlist of 12-18 songs picked ONLY from the library below.
+Make it feel like a hand-crafted mix with a clear through-line (mood/energy/theme) —
+not a random shuffle. Vary artists. Use the EXACT "Artist - Title" strings from the list.
+
+Library:
+{library_text}
+
+Respond in EXACTLY this JSON (no other text):
+{{
+  "name": "<catchy playlist name, 2-4 words>",
+  "description": "<1 sentence on the vibe of this week's mix>",
+  "songs": ["Artist - Title", "Artist - Title", ...]
+}}"""
+
+    try:
+        def _call():
+            import boto3
+            client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            resp = client.invoke_model(
+                modelId="us.anthropic.claude-sonnet-4-6",
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 1500,
+                    "temperature": 0.85,
+                    "messages": [{"role": "user", "content": prompt}],
+                }),
+            )
+            return json.loads(resp["body"].read())
+
+        bedrock_response = await asyncio.to_thread(_call)
+        result_text = bedrock_response["content"][0]["text"].strip()
+        clean = re.sub(r'```(?:json)?\s*', '', result_text).strip()
+        json_match = re.search(r'\{[\s\S]*\}', clean)
+        ai_result = json.loads(json_match.group()) if json_match else json.loads(clean)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return AIWeeklyPlaylistResponse(
+            name="This Week's Mix", description="Curation unavailable right now.",
+            tracks=[], generated_at=datetime.now(timezone.utc).isoformat(), week_of=week_of,
+        )
+
+    # Resolve each pick to a Jellyfin track id so it's playable in-app.
+    settings = get_settings()
+    jellyfin = JellyfinClient(settings.jellyfin_url, settings.jellyfin_token)
+    tracks: list[AIWeeklyTrack] = []
+    try:
+        for entry in ai_result.get("songs", []):
+            parts = entry.split(" - ", 1)
+            if len(parts) == 2:
+                artist, title = parts[0].strip(), parts[1].strip()
+            else:
+                artist, title = "", entry.strip()
+            track_id = await jellyfin.search_track(title, artist)
+            tracks.append(AIWeeklyTrack(track_id=track_id, title=title, artist=artist))
+    finally:
+        await jellyfin.close()
+
+    return AIWeeklyPlaylistResponse(
+        name=ai_result.get("name", "This Week's Mix"),
+        description=ai_result.get("description", ""),
+        tracks=tracks,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        week_of=week_of,
+    )
+
+
+@router.get("/ai/weekly-playlist", response_model=AIWeeklyPlaylistResponse)
+async def get_weekly_playlist(db: DbSession) -> AIWeeklyPlaylistResponse:
+    """The AI-curated playlist of the week (regenerates once per ISO week)."""
+    cache_key = "ai_weekly_playlist"
+    cached = _get_cached(cache_key, ttl=AI_WEEKLY_TTL)
+    # Rebuild if never generated or the ISO week rolled over.
+    if cached is not None and getattr(cached, "week_of", None) == _iso_week_monday():
+        return cached
+    fresh = await _build_weekly_playlist(db)
+    _set_cached(cache_key, fresh)
+    return fresh
+
+
+@router.post("/ai/weekly-playlist/save", response_model=SaveWeeklyPlaylistResponse)
+async def save_weekly_playlist(db: DbSession) -> SaveWeeklyPlaylistResponse:
+    """Save the current weekly mix as a real Jellyfin playlist (opt-in)."""
+    from app.config import get_settings
+    from app.library.jellyfin import JellyfinClient
+
+    playlist = await get_weekly_playlist(db)
+    if not playlist.tracks:
+        return SaveWeeklyPlaylistResponse(jellyfin_playlist_id=None, saved=0, name=playlist.name)
+
+    settings = get_settings()
+    jellyfin = JellyfinClient(settings.jellyfin_url, settings.jellyfin_token)
+    saved = 0
+    playlist_id = None
+    try:
+        admin_user_id = await jellyfin.get_admin_user_id()
+        if admin_user_id:
+            name = f"AI Weekly: {playlist.name} ({playlist.week_of})"
+            playlist_id = await jellyfin.get_or_create_playlist(name, admin_user_id)
+            for t in playlist.tracks:
+                tid = t.track_id or await jellyfin.search_track(t.title, t.artist)
+                if tid and playlist_id:
+                    if await jellyfin.add_to_playlist(playlist_id, tid, admin_user_id):
+                        saved += 1
+    finally:
+        await jellyfin.close()
+
+    return SaveWeeklyPlaylistResponse(
+        jellyfin_playlist_id=playlist_id,
+        saved=saved,
+        name=playlist.name,
+    )
+
+
 # --- AI Response Cache ---
 # Cache AI responses in memory to avoid repeated Bedrock calls on every page load
 _ai_cache: dict[str, tuple[float, any]] = {}
