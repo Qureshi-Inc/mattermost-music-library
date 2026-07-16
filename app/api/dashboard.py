@@ -559,7 +559,14 @@ async def get_user_profile(username: str, db: DbSession) -> UserProfileResponse:
     )
 
     submissions = []
+    seen_titles: set[str] = set()
     for job in jobs:
+        # Deduplicate by title (jobs are ordered newest-first, so we keep the latest)
+        if job.title:
+            key = job.title.strip().lower()
+            if key in seen_titles:
+                continue
+            seen_titles.add(key)
         submissions.append(
             RecentEntry(
                 title=job.title,
