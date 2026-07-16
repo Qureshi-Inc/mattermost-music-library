@@ -164,18 +164,28 @@ class FullEngagementResponse(BaseModel):
 @router.post("/play", response_model=PlayEventResponse)
 async def record_play(body: PlayEventRequest, db: DbSession) -> PlayEventResponse:
     """Record a play event (called when user listens 30+ seconds)."""
+    # Sanitize durations — reject/clamp implausible values (e.g. a leaked
+    # timestamp). A song is at most a few hours; cap listened at duration.
+    MAX_SECONDS = 6 * 3600  # 6 hours
+    duration_seconds = max(0, min(body.duration_seconds, MAX_SECONDS))
+    listened_seconds = max(0, min(body.listened_seconds, MAX_SECONDS))
+    if duration_seconds > 0:
+        listened_seconds = min(listened_seconds, duration_seconds)
+    hour_of_day = body.hour_of_day if 0 <= body.hour_of_day <= 23 else 0
+    thumbs = body.thumbs if body.thumbs in (-1, 0, 1) else 0
+
     event = PlayEvent(
         username=body.username,
         track_id=body.track_id,
         title=body.title,
         artist=body.artist,
         album=body.album,
-        duration_seconds=body.duration_seconds,
-        listened_seconds=body.listened_seconds,
+        duration_seconds=duration_seconds,
+        listened_seconds=listened_seconds,
         completed=body.completed,
-        hour_of_day=body.hour_of_day,
+        hour_of_day=hour_of_day,
         skipped=body.skipped,
-        thumbs=body.thumbs,
+        thumbs=thumbs,
     )
     db.add(event)
     await db.flush()
@@ -549,6 +559,40 @@ class CommentResponse(BaseModel):
 
 class CommentFeedResponse(BaseModel):
     comments: list[CommentResponse]
+
+
+class ThumbRequest(BaseModel):
+    username: str
+    track_id: str
+    title: str = ""
+    artist: str = ""
+    thumbs: int  # 1 = up, -1 = down, 0 = cleared
+
+
+@router.post("/thumb")
+async def record_thumb(body: ThumbRequest, db: DbSession) -> dict:
+    """Record a thumbs up/down as a lightweight play event (0 listened).
+
+    Stored so the smart-shuffle + recommendation algorithms can weight tracks.
+    """
+    thumbs = body.thumbs if body.thumbs in (-1, 0, 1) else 0
+    event = PlayEvent(
+        username=body.username,
+        track_id=body.track_id,
+        title=body.title or "",
+        artist=body.artist or "",
+        album=None,
+        duration_seconds=0,
+        listened_seconds=0,
+        completed=False,
+        hour_of_day=0,
+        skipped=False,
+        thumbs=thumbs,
+        source="thumb",
+    )
+    db.add(event)
+    await db.flush()
+    return {"status": "ok", "thumbs": thumbs}
 
 
 class RegisterDeviceRequest(BaseModel):
