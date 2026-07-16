@@ -21,6 +21,33 @@ logger = get_logger(__name__)
 _mattermost_ws_task: asyncio.Task | None = None
 _pipeline_task: asyncio.Task | None = None
 _pipeline_instance = None
+_weekly_playlist_task: asyncio.Task | None = None
+
+
+async def _weekly_playlist_warmer() -> None:
+    """Keep the AI Playlist of the Week pre-generated so no user ever waits on
+    the cold Bedrock call. Builds on startup, then re-checks once a day and
+    regenerates when the ISO week rolls over."""
+    from app.api.dashboard import _build_weekly_playlist, _iso_week_monday, _set_cached, _get_cached
+    from app.database import async_session_factory
+
+    # Small initial delay so startup (DB init, library) settles first.
+    await asyncio.sleep(20)
+    while True:
+        try:
+            cached = _get_cached("ai_weekly_playlist", ttl=7 * 86400)
+            if cached is None or getattr(cached, "week_of", None) != _iso_week_monday():
+                async with async_session_factory() as session:
+                    fresh = await _build_weekly_playlist(session)
+                _set_cached("ai_weekly_playlist", fresh)
+                logger.info(
+                    "Weekly AI playlist pre-warmed",
+                    extra={"week_of": fresh.week_of, "tracks": len(fresh.tracks)},
+                )
+        except Exception as exc:
+            logger.error("Weekly playlist warmer failed", exc_info=exc)
+        # Re-check daily; the ISO-week check above makes the actual rebuild weekly.
+        await asyncio.sleep(86400)
 
 
 async def _start_mattermost_listener() -> None:
@@ -106,6 +133,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start job pipeline
     await _start_pipeline()
 
+    # Start the weekly AI playlist warmer (pre-generates so users never wait)
+    global _weekly_playlist_task
+    _weekly_playlist_task = asyncio.create_task(
+        _weekly_playlist_warmer(), name="weekly-playlist-warmer"
+    )
+
     yield
 
     # --- Shutdown ---
@@ -122,6 +155,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         with suppress(asyncio.CancelledError):
             await _mattermost_ws_task
         logger.info("Mattermost WebSocket listener stopped")
+
+    # Cancel the weekly playlist warmer
+    if _weekly_playlist_task is not None and not _weekly_playlist_task.done():
+        _weekly_playlist_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _weekly_playlist_task
+        logger.info("Weekly playlist warmer stopped")
 
     # Dispose of database engine
     await dispose_engine()
