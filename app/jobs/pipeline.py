@@ -26,6 +26,25 @@ def get_pipeline() -> "JobPipeline | None":
     return _pipeline_instance
 
 
+def _artist_tokens(artist: str) -> set[str]:
+    """Split a (normalized) artist string into individual artist names,
+    treating ',', '&', 'and', 'x', 'feat', 'ft' as separators."""
+    import re
+    parts = re.split(r"\s*(?:,|&|/|\bx\b|\band\b|\bfeat\.?\b|\bft\.?\b|\bwith\b)\s*", artist)
+    return {p.strip() for p in parts if p.strip()}
+
+
+def _artists_overlap(a: str, b: str) -> bool:
+    """True if two normalized artist strings share a primary artist. Handles
+    'A, B' vs 'A & B' vs 'A' — the same song credited slightly differently."""
+    ta, tb = _artist_tokens(a), _artist_tokens(b)
+    if not ta or not tb:
+        return a == b
+    # Match if they share any artist name (covers different collaborator ordering
+    # and single-artist folders for multi-artist tracks).
+    return bool(ta & tb)
+
+
 class JobPipeline:
     """Orchestrates the complete music acquisition pipeline.
 
@@ -554,30 +573,61 @@ class JobPipeline:
         if not title or not artist:
             return False
 
-        # Normalize for comparison
-        norm_title = title.lower().strip()
-        norm_artist = artist.lower().strip()
+        is_dup = False
 
-        # Check filesystem
-        music_path = self._settings.music_base_path
-        if music_path.exists():
-            for mp3 in music_path.rglob("*.mp3"):
-                fname = mp3.stem.lower()
-                parent = mp3.parent.parent.name.lower()  # Artist folder
-                if norm_title in fname and norm_artist in parent:
-                    # Add to requester's playlist even though song already exists
-                    if job.requester_user_id:
-                        await self._add_to_user_playlist_by_name(
-                            title, artist, job.requester_user_id
-                        )
+        # Primary check: DB-backed detector (ISRC → provider id → normalized
+        # title+artist+duration). Robust across artist-string formatting
+        # differences ("A, B" vs "A & B", feat. variants) that broke the naive
+        # filesystem substring check and let the same song get added twice.
+        try:
+            from app.database import async_session_factory
+            from app.matching.dedup import DuplicateDetector
 
-                    await self.queue.update_status(job.id, JobStatus.COMPLETE)
-                    await self._post_status(
-                        job,
-                        f"ℹ️ Already in library: **{title}** by **{artist}**\n\n🎧 Added to your playlist",
-                    )
-                    logger.info("Duplicate found, added to user playlist", extra={"job_id": str(job.id), "title": title, "artist": artist})
-                    return True
+            extra = metadata.get("extra") or {}
+            dur = metadata.get("duration_seconds")
+            async with async_session_factory() as _dedup_session:
+                detector = DuplicateDetector(_dedup_session)
+                existing = await detector.find_duplicate(
+                    title=title,
+                    artist=artist,
+                    duration_seconds=int(dur) if dur else None,
+                    isrc=metadata.get("isrc"),
+                    spotify_id=extra.get("spotify_id") or extra.get("provider_id_spotify"),
+                    apple_music_id=extra.get("apple_music_id"),
+                )
+            if existing is not None:
+                is_dup = True
+        except Exception as e:
+            logger.warning("DB dedup check failed, falling back to filesystem: %s", e)
+
+        # Fallback / secondary: filesystem scan, now normalizing BOTH sides so
+        # punctuation/feat. differences don't create duplicates.
+        if not is_dup:
+            from app.matching.dedup import DuplicateDetector as _DD
+            norm_title = _DD.normalize(title)
+            norm_artist = _DD.normalize(artist)
+            music_path = self._settings.music_base_path
+            if music_path.exists():
+                for mp3 in music_path.rglob("*.mp3"):
+                    fname = _DD.normalize(mp3.stem)
+                    parent = _DD.normalize(mp3.parent.parent.name)  # Artist folder
+                    if norm_title == fname and _artists_overlap(norm_artist, parent):
+                        is_dup = True
+                        break
+
+        if is_dup:
+            # Add to requester's playlist even though song already exists
+            if job.requester_user_id:
+                await self._add_to_user_playlist_by_name(
+                    title, artist, job.requester_user_id
+                )
+            await self.queue.update_status(job.id, JobStatus.COMPLETE)
+            await self._post_status(
+                job,
+                f"ℹ️ Already in library: **{title}** by **{artist}**\n\n🎧 Added to your playlist",
+            )
+            logger.info("Duplicate found, added to user playlist", extra={"job_id": str(job.id), "title": title, "artist": artist})
+            return True
 
         return False
 
