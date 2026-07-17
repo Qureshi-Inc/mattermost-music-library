@@ -15,12 +15,12 @@ class ScoringWeights:
     but the scorer normalizes them internally so any positive values work.
     """
 
-    title_similarity: float = 0.35
-    duration_match: float = 0.25
-    channel_reputation: float = 0.15
+    title_similarity: float = 0.32
+    duration_match: float = 0.34
+    channel_reputation: float = 0.12
     view_count: float = 0.05
-    official_in_title: float = 0.10
-    unwanted_content_penalty: float = 0.10
+    official_in_title: float = 0.08
+    unwanted_content_penalty: float = 0.09
 
 
 @dataclass
@@ -271,10 +271,15 @@ class CandidateScorer:
                     break
 
         # Additional penalties for other undesirable content
-        undesirable = ["karaoke", "instrumental", "8d audio", "slowed", "sped up", "nightcore"]
+        undesirable = [
+            "karaoke", "instrumental", "8d audio", "slowed", "sped up", "nightcore",
+            "reaction", "reacts", "review", "reviewed", "explained", "meaning",
+            "lesson", "tutorial", "how to play", "guitar chords", "piano tutorial",
+            "mashup", "loop", "1 hour", "1hour", "extended loop",
+        ]
         for pattern in undesirable:
             if pattern in title_lower:
-                penalty += 0.3
+                penalty += 0.35
                 break
 
         return max(0.0, 1.0 - penalty)

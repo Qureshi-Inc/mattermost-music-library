@@ -673,11 +673,28 @@ class JobPipeline:
         try:
             import asyncio
             from app.matching import YouTubeSearcher
+            from app.matching.scorer import ExpectedMetadata
 
             searcher = YouTubeSearcher()
             title = metadata.get("title") or "unknown"
             artist = metadata.get("artist") or "unknown"
-            candidates_result = await asyncio.to_thread(searcher.search, artist, title)
+
+            # Pass the resolved duration so the scorer can favour the version
+            # that actually matches length — the single best signal for picking
+            # the right upload over covers / edits / slowed versions.
+            dur = metadata.get("duration_seconds")
+            title_l = title.lower()
+            expected = ExpectedMetadata(
+                title=title,
+                artist=artist,
+                duration_seconds=float(dur) if dur else None,
+                is_live="live" in title_l,
+                is_remix="remix" in title_l,
+                is_cover="cover" in title_l,
+            )
+            candidates_result = await asyncio.to_thread(
+                searcher.search, artist, title, expected
+            )
             candidates = candidates_result.candidates if candidates_result else []
 
             if not candidates:
