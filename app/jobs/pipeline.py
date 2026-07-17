@@ -156,20 +156,33 @@ class JobPipeline:
             if await self._check_duplicate(job, metadata):
                 return
 
-            # Stage 2: Search for YouTube candidates
-            candidates = await self._stage_search(job, metadata)
-            if candidates is None:
-                return
+            # If the source itself is a YouTube link, the user already chose the
+            # exact version they want — download it directly instead of throwing
+            # it away and re-searching YouTube (which can pick a wrong version).
+            direct_url = self._direct_youtube_url(job, metadata)
+            if direct_url:
+                best_candidate = {
+                    "url": direct_url,
+                    "youtube_url": direct_url,
+                    "title": metadata.get("title") or "Unknown",
+                    "score": 1.0,
+                }
+                await self._post_status(job, "Using the shared YouTube link directly")
+            else:
+                # Stage 2: Search for YouTube candidates
+                candidates = await self._stage_search(job, metadata)
+                if candidates is None:
+                    return
 
-            # Stage 3: Score candidates
-            best_candidate = await self._stage_score(job, candidates)
-            if best_candidate is None:
-                return
+                # Stage 3: Score candidates
+                best_candidate = await self._stage_score(job, candidates)
+                if best_candidate is None:
+                    return
 
-            # Stage 4: Approval gate
-            approved = await self._stage_approve(job, best_candidate)
-            if not approved:
-                return
+                # Stage 4: Approval gate
+                approved = await self._stage_approve(job, best_candidate)
+                if not approved:
+                    return
 
             # Stage 5: Download the approved candidate
             download_path = await self._stage_download(job, best_candidate)
@@ -568,6 +581,28 @@ class JobPipeline:
 
         return False
 
+    @staticmethod
+    def _direct_youtube_url(job: Job, metadata: dict) -> str | None:
+        """If the shared source is a YouTube link, return a canonical watch URL
+        so we download that exact video rather than re-searching YouTube.
+
+        Returns None for non-YouTube sources (Apple/Spotify), where a YouTube
+        search is genuinely required because those links carry no audio.
+        """
+        from app.resolvers.youtube import _YOUTUBE_PATTERNS, _extract_video_id
+
+        url = job.url or ""
+        if not any(p.search(url) for p in _YOUTUBE_PATTERNS):
+            return None
+
+        # Prefer the provider id resolved by the YouTube resolver; fall back to
+        # parsing the original URL.
+        video_id = metadata.get("provider_id") or _extract_video_id(url)
+        if video_id:
+            return f"https://www.youtube.com/watch?v={video_id}"
+        # Last resort: hand yt-dlp the original URL as-is.
+        return url
+
     async def _stage_resolve(self, job: Job) -> dict | None:
         """Stage 1: Resolve metadata from the source URL.
 
@@ -609,6 +644,8 @@ class JobPipeline:
                 "album": track_metadata.album,
                 "duration_seconds": track_metadata.duration_seconds,
                 "isrc": track_metadata.isrc,
+                "provider": getattr(track_metadata, "provider", None),
+                "provider_id": track_metadata.provider_id,
                 "extra": getattr(track_metadata, "extra", None) or {},
             }
 
