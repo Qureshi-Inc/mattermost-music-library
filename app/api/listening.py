@@ -13,6 +13,7 @@ from app.api.deps import DbSession
 from app.models.comment import Comment
 from app.models.device_token import DeviceToken
 from app.models.play_event import PlayEvent
+from app.models.user_setting import UserSetting
 from app.notifications.fcm import send_push
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,28 @@ class FullEngagementResponse(BaseModel):
 @router.post("/play", response_model=PlayEventResponse)
 async def record_play(body: PlayEventRequest, db: DbSession) -> PlayEventResponse:
     """Record a play event (called when user listens 30+ seconds)."""
+    # Respect the user's data-collection opt-out (collect_plays=False).
+    optout = (
+        await db.execute(
+            select(UserSetting.collect_plays).where(
+                UserSetting.username == _norm_user(body.username)
+            )
+        )
+    ).scalar_one_or_none()
+    if optout is False:
+        return PlayEventResponse(
+            id="",
+            username=_norm_user(body.username),
+            track_id=body.track_id,
+            title=body.title,
+            artist=body.artist,
+            album=body.album,
+            listened_seconds=0,
+            completed=False,
+            skipped=False,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
     # Sanitize durations — reject/clamp implausible values (e.g. a leaked
     # timestamp). A song is at most a few hours; cap listened at duration.
     MAX_SECONDS = 6 * 3600  # 6 hours
@@ -785,6 +808,73 @@ async def register_device(body: RegisterDeviceRequest, db: DbSession) -> dict:
     return {"status": "ok"}
 
 
+# --- User settings (synced across devices) ---
+
+
+class UserSettingsResponse(BaseModel):
+    username: str
+    display_name: str | None = None
+    color: str | None = None
+    notify_mentions: bool = True
+    collect_plays: bool = True
+
+
+class UserSettingsUpdate(BaseModel):
+    username: str
+    display_name: str | None = None
+    color: str | None = None
+    notify_mentions: bool | None = None
+    collect_plays: bool | None = None
+
+
+async def _get_or_create_settings(db: DbSession, username: str) -> UserSetting:
+    key = _norm_user(username)
+    row = (
+        await db.execute(select(UserSetting).where(UserSetting.username == key))
+    ).scalar_one_or_none()
+    if row is None:
+        row = UserSetting(username=key)
+        db.add(row)
+        await db.flush()
+    return row
+
+
+@router.get("/settings", response_model=UserSettingsResponse)
+async def get_settings(db: DbSession, username: str = Query(...)) -> UserSettingsResponse:
+    """Fetch a user's synced settings, creating defaults on first access."""
+    row = await _get_or_create_settings(db, username)
+    await db.commit()
+    return UserSettingsResponse(
+        username=row.username,
+        display_name=row.display_name,
+        color=row.color,
+        notify_mentions=row.notify_mentions,
+        collect_plays=row.collect_plays,
+    )
+
+
+@router.put("/settings", response_model=UserSettingsResponse)
+async def update_settings(body: UserSettingsUpdate, db: DbSession) -> UserSettingsResponse:
+    """Update a user's settings; only provided fields change."""
+    row = await _get_or_create_settings(db, body.username)
+    if body.display_name is not None:
+        row.display_name = body.display_name.strip() or None
+    if body.color is not None:
+        row.color = body.color.strip() or None
+    if body.notify_mentions is not None:
+        row.notify_mentions = body.notify_mentions
+    if body.collect_plays is not None:
+        row.collect_plays = body.collect_plays
+    await db.commit()
+    return UserSettingsResponse(
+        username=row.username,
+        display_name=row.display_name,
+        color=row.color,
+        notify_mentions=row.notify_mentions,
+        collect_plays=row.collect_plays,
+    )
+
+
 @router.post("/comment", response_model=CommentResponse)
 async def post_comment(body: CommentRequest, db: DbSession) -> CommentResponse:
     """Post a comment or reaction on a track."""
@@ -831,6 +921,17 @@ async def _notify_mentions(db: DbSession, body: CommentRequest) -> None:
         variants = _name_variants(mention)
         # Don't notify the commenter about their own mention
         if commenter.lower() in variants:
+            continue
+
+        # Respect the mentioned user's notify_mentions preference (default on).
+        pref = (
+            await db.execute(
+                select(UserSetting.notify_mentions).where(
+                    func.lower(UserSetting.username).in_(variants)
+                )
+            )
+        ).scalars().first()
+        if pref is False:
             continue
 
         result = await db.execute(

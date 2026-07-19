@@ -7,6 +7,7 @@ from app.models.device_token import DeviceToken
 from app.models.job import Job, JobStatus, SourcePlatform
 from app.models.play_event import PlayEvent
 from app.models.track import Track
+from app.models.user_setting import UserSetting
 
 __all__ = [
     "Base",
@@ -19,4 +20,5 @@ __all__ = [
     "PlayEvent",
     "Comment",
     "DeviceToken",
+    "UserSetting",
 ]
