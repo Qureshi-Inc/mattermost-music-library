@@ -36,6 +36,11 @@ class DuplicateDetector:
         re.IGNORECASE,
     )
     _EXTRA_WHITESPACE = re.compile(r"\s+")
+    # Punctuation that the filesystem sanitizer drops from filenames (e.g. a
+    # title "Where'd All the Time Go?" is saved as "...Go.mp3"). Strip the same
+    # characters here so the title-vs-filename dedup compare doesn't miss it and
+    # re-download the song as a "(1)" duplicate.
+    _PUNCT_PATTERN = re.compile(r"[?!.,:;\"'’“”\\/*|<>()\[\]]")
 
     # Duration tolerance in seconds for fuzzy matching
     DURATION_TOLERANCE_SECONDS: int = 3
@@ -163,5 +168,6 @@ class DuplicateDetector:
         result = text.lower()
         result = cls._FEAT_PATTERN.sub("", result)
         result = cls._PARENTHETICAL_PATTERN.sub("", result)
+        result = cls._PUNCT_PATTERN.sub("", result)
         result = cls._EXTRA_WHITESPACE.sub(" ", result)
         return result.strip()
