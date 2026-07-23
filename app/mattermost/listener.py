@@ -34,9 +34,11 @@ async def run_websocket_listener() -> None:
     _recent_links: dict[str, float] = {}
 
     async def on_music_link(message: IncomingMessage) -> None:
-        """Handle a detected music link in the channel.
+        """Handle detected music links in the channel.
 
-        Only processes the first music URL per message to avoid duplicates.
+        Processes EVERY music URL in the message. People routinely paste
+        several tracks in one post (e.g. sharing a few songs at once); an
+        earlier version only took the first URL, silently dropping the rest.
         """
         import time
         from app.database import async_session_factory
@@ -46,70 +48,73 @@ async def run_websocket_listener() -> None:
         if not message.music_urls:
             return
 
-        # Only process the first URL per message
-        url = message.music_urls[0]
-
-        # Dedup: ignore same URL from same user within 60 seconds
-        dedup_key = f"{message.user_id}:{url}"
+        # De-dup within the message itself (same link pasted twice) while
+        # preserving order.
+        urls = list(dict.fromkeys(message.music_urls))
         now = time.time()
-        if dedup_key in _recent_links and now - _recent_links[dedup_key] < 60:
-            logger.info("Ignoring duplicate link from %s (within 60s)", message.username)
-            return
-        _recent_links[dedup_key] = now
-        # Clean old entries
+
+        # Clean old dedup entries once up front
         for k in list(_recent_links):
             if now - _recent_links[k] > 120:
                 del _recent_links[k]
 
-        # Determine source platform from URL
-        platform = SourcePlatform.UNKNOWN
-        if "youtube.com" in url or "youtu.be" in url:
-            platform = SourcePlatform.YOUTUBE
-        elif "spotify.com" in url:
-            platform = SourcePlatform.SPOTIFY
-        elif "music.apple.com" in url:
-            platform = SourcePlatform.APPLE_MUSIC
+        for url in urls:
+            # Dedup: ignore same URL from same user within 60 seconds
+            dedup_key = f"{message.user_id}:{url}"
+            if dedup_key in _recent_links and now - _recent_links[dedup_key] < 60:
+                logger.info("Ignoring duplicate link from %s (within 60s): %s", message.username, url)
+                continue
+            _recent_links[dedup_key] = now
 
-        # Create a job for this link
-        async with async_session_factory() as session:
-            queue = JobQueue(session)
-            job = await queue.create_job(
-                url=url,
-                source_platform=platform,
-                mattermost_post_id=message.post_id,
-                mattermost_channel_id=message.channel_id,
-                requester_user_id=message.user_id,
+            # Determine source platform from URL
+            platform = SourcePlatform.UNKNOWN
+            if "youtube.com" in url or "youtu.be" in url:
+                platform = SourcePlatform.YOUTUBE
+            elif "spotify.com" in url:
+                platform = SourcePlatform.SPOTIFY
+            elif "music.apple.com" in url:
+                platform = SourcePlatform.APPLE_MUSIC
+
+            # Create a job for this link
+            async with async_session_factory() as session:
+                queue = JobQueue(session)
+                job = await queue.create_job(
+                    url=url,
+                    source_platform=platform,
+                    mattermost_post_id=message.post_id,
+                    mattermost_channel_id=message.channel_id,
+                    requester_user_id=message.user_id,
+                )
+                await session.commit()
+
+            logger.info(
+                "Created job for music link",
+                extra={
+                    "job_id": str(job.id),
+                    "url": url,
+                    "platform": platform.value,
+                    "user": message.username,
+                },
             )
-            await session.commit()
 
-        logger.info(
-            "Created job for music link",
-            extra={
-                "job_id": str(job.id),
-                "url": url,
-                "platform": platform.value,
-                "user": message.username,
-            },
-        )
+            # Reply in thread acknowledging the link
+            thread_id = message.root_id or message.post_id
+            result = await client.reply_in_thread(
+                channel_id=message.channel_id,
+                root_id=thread_id,
+                message="⏳ Processing...",
+            )
 
-        # Reply in thread acknowledging the link
-        thread_id = message.root_id or message.post_id
-        result = await client.reply_in_thread(
-            channel_id=message.channel_id,
-            root_id=thread_id,
-            message="⏳ Processing...",
-        )
-
-        # Store the reply post ID so the pipeline can edit it
-        if result and result.get("id"):
-            from app.jobs.pipeline import get_pipeline
-            pipeline = get_pipeline()
-            if pipeline:
-                job_key = str(job.id)
-                pipeline._status_post_ids[job_key] = result["id"]
-                logger.info("Stored status post_id=%s for job_key=%s", result["id"], job_key)
-            else:
-                logger.warning("Pipeline not available yet, status post won't be editable")
+            # Store the reply post ID so the pipeline can edit it
+            if result and result.get("id"):
+                from app.jobs.pipeline import get_pipeline
+                pipeline = get_pipeline()
+                if pipeline:
+                    job_key = str(job.id)
+                    pipeline._status_post_ids[job_key] = result["id"]
+                    logger.info("Stored status post_id=%s for job_key=%s", result["id"], job_key)
+                else:
+                    logger.warning("Pipeline not available yet, status post won't be editable")
 
     async def on_playlist(message: IncomingMessage) -> None:
         """Handle a detected playlist link in the channel."""
