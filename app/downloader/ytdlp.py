@@ -179,6 +179,10 @@ class YtDlpDownloader:
             # Avoid interactive prompts
             "noplaylist": True,
             "no_color": True,
+            # YouTube now requires solving JS challenges (via the deno runtime in
+            # the image). Allow yt-dlp to fetch the EJS challenge-solver from
+            # GitHub, otherwise many videos fail extraction with HTTP 403.
+            "remote_components": ["ejs:github"],
         }
 
         if self.rate_limit:

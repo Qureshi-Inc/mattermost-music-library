@@ -17,8 +17,13 @@ RUN pip install --no-cache-dir --prefix=/install .
 FROM python:3.12-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg curl unzip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Deno — required JS runtime for yt-dlp's YouTube extractor. Without it, newer
+# YouTube videos fail extraction with HTTP 403 (see yt-dlp EJS wiki).
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && /usr/local/bin/deno --version
 
 RUN useradd --create-home --shell /bin/bash slaptastic
 
