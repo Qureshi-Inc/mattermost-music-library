@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+from urllib.parse import parse_qs, unquote, urlparse
 
 import aiohttp
 
@@ -17,7 +18,27 @@ _APPLE_MUSIC_TRACK_PATTERN = re.compile(
     r"(?:https?://)?music\.apple\.com/([a-z]{2})/(?:album|song)/[^/]+/(\d+)(?:\?i=(\d+))?"
 )
 
+# Search URLs: https://music.apple.com/{storefront}/search?term=some+song+name
+_APPLE_MUSIC_SEARCH_PATTERN = re.compile(
+    r"(?:https?://)?music\.apple\.com/[a-z]{2}/search\b", re.IGNORECASE
+)
+
 _API_BASE = "https://api.music.apple.com/v1"
+
+
+def _extract_search_term(url: str) -> str | None:
+    """Extract the search term from an Apple Music search URL.
+
+    e.g. .../search?term=Koi%20Labda%20Symt -> "Koi Labda Symt".
+    Returns None if this isn't a search URL or has no term.
+    """
+    if not _APPLE_MUSIC_SEARCH_PATTERN.search(url):
+        return None
+    qs = parse_qs(urlparse(url).query)
+    term = (qs.get("term") or qs.get("q") or [None])[0]
+    if not term:
+        return None
+    return unquote(term).strip() or None
 
 
 def _extract_track_info(url: str) -> tuple[str, str] | None:
@@ -53,11 +74,21 @@ class AppleMusicResolver(BaseResolver):
         return self._session
 
     def can_handle(self, url: str) -> bool:
-        """Return True for Apple Music track/song URLs."""
-        return _extract_track_info(url) is not None
+        """Return True for Apple Music track/song URLs and search URLs."""
+        return _extract_track_info(url) is not None or _extract_search_term(url) is not None
 
     async def resolve(self, url: str) -> TrackMetadata:
-        """Fetch track metadata from the Apple Music API."""
+        """Fetch track metadata from the Apple Music API.
+
+        For search URLs (music.apple.com/../search?term=...), there is no track
+        to look up — use the search term as the title so the pipeline searches
+        YouTube for it directly.
+        """
+        search_term = _extract_search_term(url)
+        if search_term is not None:
+            logger.info("Apple Music search URL; using term as query: %r", search_term)
+            return TrackMetadata(title=search_term, provider="apple_music")
+
         info = _extract_track_info(url)
         if not info:
             return TrackMetadata(provider="apple_music")
