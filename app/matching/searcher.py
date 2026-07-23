@@ -117,6 +117,9 @@ class YouTubeSearcher:
             "ignoreerrors": True,
             # Don't download anything, just extract info
             "simulate": True,
+            # Fail a stalled connection fast instead of hanging forever — a
+            # single hung search otherwise blocks the whole sequential pipeline.
+            "socket_timeout": 30,
         }
 
         candidates: list[CandidateInfo] = []

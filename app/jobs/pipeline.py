@@ -742,8 +742,11 @@ class JobPipeline:
                 is_remix="remix" in title_l,
                 is_cover="cover" in title_l,
             )
-            candidates_result = await asyncio.to_thread(
-                searcher.search, artist, title, expected
+            # Hard ceiling on the search so a hung yt-dlp extraction can never
+            # freeze the (sequential) pipeline for every job behind it.
+            candidates_result = await asyncio.wait_for(
+                asyncio.to_thread(searcher.search, artist, title, expected),
+                timeout=90,
             )
             candidates = candidates_result.candidates if candidates_result else []
 
