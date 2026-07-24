@@ -230,11 +230,14 @@ class JobPipeline:
             # Add to user's playlist in Jellyfin
             await self._add_to_user_playlist(job, title, artist)
 
+            links_line = await self._build_streaming_links(job, metadata)
+
             await self._post_status(
                 job,
                 f"✅ Added **{title}** by **{artist}**\n\n"
                 f"🎧 Available in Jellyfin / Finamp\n"
-                f"📁 {artist}/{album}/{title}.mp3",
+                f"📁 {artist}/{album}/{title}.mp3"
+                + (f"\n\n{links_line}" if links_line else ""),
             )
 
         except asyncio.CancelledError:
@@ -465,6 +468,11 @@ class JobPipeline:
                 original_title, itunes_title,
             )
 
+        # Capture the Apple Music page URL so the success message can link it.
+        if best.get("trackViewUrl"):
+            extra["apple_music_url"] = best["trackViewUrl"]
+        if best.get("trackId"):
+            extra["apple_music_id"] = str(best["trackId"])
         if best.get("artworkUrl100"):
             extra["artwork_url"] = best["artworkUrl100"].replace("100x100", "600x600")
         if best.get("primaryGenreName"):
@@ -561,6 +569,81 @@ class JobPipeline:
                 if norm_title in fname and norm_artist in parent:
                     return True
         return False
+
+    async def _build_streaming_links(self, job: Job, metadata: dict) -> str:
+        """Build a "Listen on: Spotify · Apple Music" line for the success reply.
+
+        Uses whatever we already know (the source URL, resolved provider ids,
+        the Apple URL captured during iTunes enrichment) and fills the missing
+        platform via an ISRC lookup so a song shared from one service still
+        links out to the other. Returns "" if no link can be built.
+        """
+        extra = metadata.get("extra") or {}
+        isrc = metadata.get("isrc")
+        provider = metadata.get("provider")
+        provider_id = metadata.get("provider_id")
+        source_url = job.url or ""
+
+        spotify_url: str | None = None
+        apple_url: str | None = None
+
+        # --- Spotify link ---
+        if "open.spotify.com/track/" in source_url:
+            spotify_url = source_url.split("?")[0]
+        elif provider == "spotify" and provider_id:
+            spotify_url = f"https://open.spotify.com/track/{provider_id}"
+        elif extra.get("spotify_id"):
+            spotify_url = f"https://open.spotify.com/track/{extra['spotify_id']}"
+
+        # --- Apple Music link ---
+        if "music.apple.com" in source_url:
+            apple_url = source_url.split("&uo=")[0]
+        elif extra.get("apple_music_url"):
+            apple_url = extra["apple_music_url"]
+
+        # Fill the missing platform so both links show when possible. Prefer an
+        # ISRC match (exact); fall back to a title+artist search.
+        if not spotify_url and (isrc or metadata.get("title")):
+            try:
+                from app.resolvers.spotify import SpotifyResolver
+                sp = SpotifyResolver()
+                sid = await sp.find_track_id_by_isrc(isrc) if isrc else None
+                if not sid:
+                    sid = await sp.find_track_id_by_query(
+                        metadata.get("title") or "", metadata.get("artist") or ""
+                    )
+                await sp.close()
+                if sid:
+                    spotify_url = f"https://open.spotify.com/track/{sid}"
+            except Exception as e:
+                logger.debug("Spotify link lookup failed: %s", e)
+
+        # iTunes has no reliable ISRC lookup, so search by title + artist
+        # (same approach the enrichment stage uses) to find the Apple page.
+        if not apple_url and metadata.get("title"):
+            try:
+                import aiohttp
+                term = f"{metadata.get('title')} {metadata.get('artist') or ''}".strip()
+                async with aiohttp.ClientSession() as s:
+                    async with s.get(
+                        "https://itunes.apple.com/search",
+                        params={"term": term, "media": "music", "entity": "song", "limit": "1"},
+                        timeout=aiohttp.ClientTimeout(total=8),
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            results = data.get("results") or []
+                            if results and results[0].get("trackViewUrl"):
+                                apple_url = results[0]["trackViewUrl"].split("&uo=")[0]
+            except Exception as e:
+                logger.debug("Apple link search failed: %s", e)
+
+        parts = []
+        if spotify_url:
+            parts.append(f"[Spotify]({spotify_url})")
+        if apple_url:
+            parts.append(f"[Apple Music]({apple_url})")
+        return "🔗 Listen on: " + " · ".join(parts) if parts else ""
 
     async def _check_duplicate(self, job: Job, metadata: dict) -> bool:
         """Check if a song with the same title/artist already exists in the library.

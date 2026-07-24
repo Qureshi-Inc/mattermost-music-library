@@ -91,6 +91,65 @@ class SpotifyResolver(BaseResolver):
         """Return True for Spotify track URLs and URIs."""
         return _extract_track_id(url) is not None
 
+    async def find_track_id_by_isrc(self, isrc: str) -> str | None:
+        """Look up a Spotify track ID from an ISRC via the search API.
+
+        Used to build a Spotify link for songs shared from Apple Music (which
+        gives us an ISRC but no Spotify id). Returns None if not found or if
+        credentials aren't configured.
+        """
+        if not isrc:
+            return None
+        token = await self._ensure_token()
+        if not token:
+            return None
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{_API_BASE}/search",
+                params={"q": f"isrc:{isrc}", "type": "track", "limit": "1"},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+        except Exception as exc:
+            logger.debug("Spotify ISRC search failed: %s", exc)
+            return None
+        items = (data.get("tracks") or {}).get("items") or []
+        return items[0]["id"] if items and items[0].get("id") else None
+
+    async def find_track_id_by_query(self, title: str, artist: str = "") -> str | None:
+        """Find a Spotify track ID by title (+ optional artist) via search.
+
+        Fallback for building a Spotify link when we have no ISRC (e.g. a song
+        shared from Apple Music resolved via the free iTunes API). Returns None
+        if not found or credentials are missing.
+        """
+        if not title:
+            return None
+        token = await self._ensure_token()
+        if not token:
+            return None
+        session = await self._get_session()
+        query = f"{title} {artist}".strip()
+        try:
+            async with session.get(
+                f"{_API_BASE}/search",
+                params={"q": query, "type": "track", "limit": "1"},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+        except Exception as exc:
+            logger.debug("Spotify query search failed: %s", exc)
+            return None
+        items = (data.get("tracks") or {}).get("items") or []
+        return items[0]["id"] if items and items[0].get("id") else None
+
     async def resolve(self, url: str) -> TrackMetadata:
         """Fetch track metadata from Spotify Web API."""
         track_id = _extract_track_id(url)
