@@ -247,6 +247,7 @@ class MattermostClient:
                 aiohttp.WSServerHandshakeError,
                 ConnectionError,
                 OSError,
+                asyncio.TimeoutError,  # heartbeat/receive_timeout on a dead socket
             ) as exc:
                 if not self._running:
                     break
@@ -283,7 +284,14 @@ class MattermostClient:
         if not self._session:
             raise RuntimeError("Session not initialized")
 
-        async with self._session.ws_connect(self.ws_url) as ws:
+        # heartbeat: aiohttp sends a ping every N seconds and drops the
+        # connection if no pong comes back. Without it, a silently-dropped
+        # socket (e.g. after an MM restart / proxy 502) leaves `async for msg
+        # in ws` blocked forever — the listener looks "connected" but receives
+        # nothing. This exact zombie stopped song processing for ~14h.
+        async with self._session.ws_connect(
+            self.ws_url, heartbeat=30.0, receive_timeout=90.0
+        ) as ws:
             self._ws = ws
             logger.info("WebSocket connected to %s", self.ws_url)
 
