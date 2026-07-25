@@ -20,6 +20,7 @@ class SourcePlatform(enum.StrEnum):
     YOUTUBE = "youtube"
     SPOTIFY = "spotify"
     APPLE_MUSIC = "apple_music"
+    SOUNDCLOUD = "soundcloud"
     UNKNOWN = "unknown"
 
 

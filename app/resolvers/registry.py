@@ -5,6 +5,7 @@ import logging
 from .apple_music import AppleMusicResolver
 from .base import BaseResolver, TrackMetadata
 from .musicbrainz import MusicBrainzResolver
+from .soundcloud import SoundCloudResolver
 from .spotify import SpotifyResolver
 from .youtube import YouTubeResolver
 
@@ -52,6 +53,7 @@ class ResolverRegistry:
             client_secret=spotify_client_secret,
         )
         self._apple_music = AppleMusicResolver(developer_token=apple_music_token)
+        self._soundcloud = SoundCloudResolver()
         self._musicbrainz = MusicBrainzResolver(user_agent=musicbrainz_user_agent)
         self._enrich = enrich_with_musicbrainz
 
@@ -59,6 +61,7 @@ class ResolverRegistry:
         self._resolvers: list[BaseResolver] = [
             self._spotify,
             self._apple_music,
+            self._soundcloud,
             self._musicbrainz,
             self._youtube,  # YouTube is last as a catch-all for its URLs
         ]

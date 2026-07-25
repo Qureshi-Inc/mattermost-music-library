@@ -74,6 +74,8 @@ async def run_websocket_listener() -> None:
                 platform = SourcePlatform.SPOTIFY
             elif "music.apple.com" in url:
                 platform = SourcePlatform.APPLE_MUSIC
+            elif "soundcloud.com" in url or "snd.sc" in url:
+                platform = SourcePlatform.SOUNDCLOUD
 
             # Create a job for this link
             async with async_session_factory() as session:
@@ -329,6 +331,8 @@ async def run_websocket_listener() -> None:
             platform = SourcePlatform.SPOTIFY
         elif "music.apple.com" in music_url:
             platform = SourcePlatform.APPLE_MUSIC
+        elif "soundcloud.com" in music_url or "snd.sc" in music_url:
+            platform = SourcePlatform.SOUNDCLOUD
 
         # Create job — attribute to the original poster
         async with async_session_factory() as session:

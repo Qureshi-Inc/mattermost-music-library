@@ -716,15 +716,26 @@ class JobPipeline:
 
     @staticmethod
     def _direct_youtube_url(job: Job, metadata: dict) -> str | None:
-        """If the shared source is a YouTube link, return a canonical watch URL
-        so we download that exact video rather than re-searching YouTube.
+        """If the shared source already points at downloadable audio, return a
+        URL to download directly rather than re-searching YouTube.
 
-        Returns None for non-YouTube sources (Apple/Spotify), where a YouTube
-        search is genuinely required because those links carry no audio.
+        Covers YouTube (download the exact video the user chose) and SoundCloud
+        (yt-dlp downloads the SoundCloud track natively). Returns None for
+        Apple/Spotify sources, where a YouTube search is genuinely required
+        because those links carry no downloadable audio.
         """
+        from app.resolvers.soundcloud import matches as _is_soundcloud
         from app.resolvers.youtube import _YOUTUBE_PATTERNS, _extract_video_id
 
         url = job.url or ""
+
+        # SoundCloud: hand yt-dlp the original URL — it resolves and downloads
+        # the exact track. Prefer a canonical webpage_url if the resolver found
+        # one (handles on.soundcloud.com short links).
+        if _is_soundcloud(url):
+            extra = metadata.get("extra") or {}
+            return extra.get("webpage_url") or url
+
         if not any(p.search(url) for p in _YOUTUBE_PATTERNS):
             return None
 
@@ -1156,6 +1167,12 @@ class JobPipeline:
             try:
                 from app.resolvers.apple_music import AppleMusicResolver
                 resolvers.append(AppleMusicResolver())
+            except ImportError:
+                pass
+
+            try:
+                from app.resolvers.soundcloud import SoundCloudResolver
+                resolvers.append(SoundCloudResolver())
             except ImportError:
                 pass
 

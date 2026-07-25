@@ -33,6 +33,10 @@ MUSIC_URL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"https?://open\.spotify\.com/track/[A-Za-z0-9]+[^\s]*"),
     # Apple Music: music.apple.com/...
     re.compile(r"https?://music\.apple\.com/[^\s]+"),
+    # SoundCloud: soundcloud.com/<artist>/<track>, on.soundcloud.com/<id>, snd.sc/<id>
+    re.compile(r"https?://(?:www\.|m\.)?soundcloud\.com/[^/\s]+/[^\s]+"),
+    re.compile(r"https?://on\.soundcloud\.com/[A-Za-z0-9]+[^\s]*"),
+    re.compile(r"https?://snd\.sc/[A-Za-z0-9]+[^\s]*"),
 ]
 
 # Combined pattern to extract any music URL from text
@@ -44,6 +48,9 @@ MUSIC_URL_COMBINED = re.compile(
     r"|https?://youtu\.be/[A-Za-z0-9_-]+[^\s]*"
     r"|https?://open\.spotify\.com/track/[A-Za-z0-9]+[^\s]*"
     r"|https?://music\.apple\.com/[^\s]+"
+    r"|https?://(?:www\.|m\.)?soundcloud\.com/[^/\s]+/[^\s]+"
+    r"|https?://on\.soundcloud\.com/[A-Za-z0-9]+[^\s]*"
+    r"|https?://snd\.sc/[A-Za-z0-9]+[^\s]*"
     r")"
 )
 
