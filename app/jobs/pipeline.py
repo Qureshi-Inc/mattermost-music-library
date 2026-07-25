@@ -1240,15 +1240,27 @@ class JobPipeline:
                 existing_post_id = self._status_post_ids.get(job_key)
                 if existing_post_id:
                     await self.mattermost.update_post(existing_post_id, message)  # type: ignore[attr-defined]
-                else:
-                    # Last resort — create a new post
+                elif job.mattermost_post_id:
+                    # Last resort — reply in the thread of the original post.
+                    # Only do this when we actually have a source post to thread
+                    # under; otherwise (e.g. backfilled jobs with no post_id) a
+                    # bare post_message would land as a stray ROOT message in the
+                    # channel instead of a thread reply.
                     result = await self.mattermost.post_message(  # type: ignore[attr-defined]
                         channel_id=job.mattermost_channel_id,
                         message=message,
-                        root_id=job.mattermost_post_id or "",
+                        root_id=job.mattermost_post_id,
                     )
                     if result and result.get("id"):
                         self._status_post_ids[job_key] = result["id"]
+                else:
+                    # No source post and no stored ack post — nothing to thread
+                    # under (backfill/manual job). Skip posting to avoid channel
+                    # spam; the song is still added to the library + playlist.
+                    logger.info(
+                        "Skipping channel status post (no thread to reply in)",
+                        extra={"job_id": str(job.id)},
+                    )
         except Exception as e:
             logger.warning(
                 "Failed to post status to Mattermost",
