@@ -757,6 +757,32 @@ class JobPipeline:
         await self._post_status(job, "Resolving metadata from link...")
 
         try:
+            # `search:Artist - Title` pseudo-URLs (from the playlist importer and
+            # the scrobble watcher) carry no streaming link — resolve them
+            # directly into metadata so the pipeline searches YouTube for them.
+            if (job.url or "").startswith("search:"):
+                query = job.url[len("search:"):].strip()
+                artist, title = None, query
+                if " - " in query:
+                    left, right = query.split(" - ", 1)
+                    artist, title = left.strip(), right.strip()
+                if not title:
+                    await self.queue.mark_failed(job.id, "Empty search query")
+                    return None
+                await self.queue.update_status(
+                    job.id, JobStatus.RESOLVING, title=title, artist=artist
+                )
+                return {
+                    "title": title,
+                    "artist": artist,
+                    "album": None,
+                    "duration_seconds": None,
+                    "isrc": None,
+                    "provider": "search",
+                    "provider_id": None,
+                    "extra": {},
+                }
+
             # Import resolver dynamically to avoid circular imports
 
             # Find appropriate resolver for this URL
