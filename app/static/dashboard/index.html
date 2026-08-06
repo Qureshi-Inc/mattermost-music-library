@@ -411,6 +411,44 @@
             </div>
         </div>
 
+        <!-- What We're Actually Listening To (scrobbles via multi-scrobbler/Maloja) -->
+        <div class="mb-10 reveal-section" data-delay="320" x-show="listening.enabled && (listening.top_artists.length > 0 || listening.top_tracks.length > 0)">
+            <h2 class="text-2xl font-display font-bold mb-6 flex items-center gap-2">
+                <span>🎧</span> On Repeat IRL
+                <span class="text-xs text-purple-400 bg-purple-400/10 px-3 py-1 rounded-full" x-text="'Last ' + listening.period_days + 'd'"></span>
+                <span class="text-xs text-gray-500" x-text="listening.total_scrobbles ? (listening.total_scrobbles + ' plays') : ''"></span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="glass-card p-6">
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Top Artists</h3>
+                    <div class="space-y-3">
+                        <template x-for="(a, i) in listening.top_artists" :key="a.name + i">
+                            <div class="flex items-center gap-3">
+                                <span class="text-gray-500 w-5 text-right" x-text="i + 1"></span>
+                                <span class="flex-1 truncate font-medium" x-text="a.name"></span>
+                                <span class="text-xs text-purple-300 bg-purple-400/10 px-2 py-0.5 rounded-full" x-text="a.scrobbles + '×'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="glass-card p-6">
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Top Tracks</h3>
+                    <div class="space-y-3">
+                        <template x-for="(t, i) in listening.top_tracks" :key="t.name + i">
+                            <div class="flex items-center gap-3">
+                                <span class="text-gray-500 w-5 text-right" x-text="i + 1"></span>
+                                <div class="flex-1 min-w-0">
+                                    <p class="truncate font-medium" x-text="t.name"></p>
+                                    <p class="text-xs text-gray-400 truncate" x-text="t.artist || ''"></p>
+                                </div>
+                                <span class="text-xs text-purple-300 bg-purple-400/10 px-2 py-0.5 rounded-full" x-text="t.scrobbles + '×'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Grid: Leaderboard + Audio Aura -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
 
@@ -894,6 +932,7 @@
             personalities: [],
             hallOfFame: [],
             hotItems: [],
+            listening: { enabled: false, top_artists: [], top_tracks: [], total_scrobbles: 0, period_days: 7 },
             facts: [],
             currentFactIndex: 0,
             currentFact: '',
@@ -941,6 +980,12 @@
                         fetch('/api/v1/dashboard/hall-of-fame').then(r => r.json()),
                         fetch('/api/v1/dashboard/heatmap').then(r => r.json()),
                     ]);
+
+                    // Group listening stats (scrobbles). Non-blocking, best-effort.
+                    fetch('/api/v1/dashboard/listening')
+                        .then(r => r.json())
+                        .then(d => { this.listening = d; })
+                        .catch(() => {});
 
                     this.stats = statsRes;
                     this.leaderboard = leaderboardRes.entries || [];
