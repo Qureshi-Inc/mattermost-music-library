@@ -327,6 +327,99 @@ async def get_hot_tracks(db: DbSession) -> HotTracksResponse:
     return HotTracksResponse(tracks=tracks, period_hours=24)
 
 
+class ListeningEntry(BaseModel):
+    """A top artist or track from the group's actual listening (via Maloja)."""
+
+    name: str
+    artist: str | None = None
+    scrobbles: int
+
+
+class ListeningResponse(BaseModel):
+    """What the group has actually been listening to, from scrobbles."""
+
+    enabled: bool
+    top_artists: list[ListeningEntry] = []
+    top_tracks: list[ListeningEntry] = []
+    total_scrobbles: int = 0
+    period_days: int = 7
+
+
+@router.get("/listening", response_model=ListeningResponse)
+async def get_listening() -> ListeningResponse:
+    """Group listening stats from Maloja (what everyone's actually playing).
+
+    Distinct from /hot (which counts in-app Jellyfin plays): this reflects
+    friends' listening across Spotify/Apple/etc as collected by
+    multi-scrobbler and stored in Maloja.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    if not settings.scrobbler_enabled or not settings.maloja_url:
+        return ListeningResponse(enabled=False)
+
+    days = settings.scrobble_lookback_days
+    since = f"{days} days ago"
+    base = settings.maloja_url.rstrip("/")
+    headers = {}
+    params_auth = {}
+    if settings.maloja_api_key:
+        params_auth = {"key": settings.maloja_api_key}
+
+    top_artists: list[ListeningEntry] = []
+    top_tracks: list[ListeningEntry] = []
+    total = 0
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as s:
+            async with s.get(
+                f"{base}/apis/mlj_1/charts/artists",
+                params={"since": since, **params_auth},
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    for e in (data.get("list") or [])[:10]:
+                        arts = e.get("artist") or e.get("artists") or []
+                        name = arts[0] if isinstance(arts, list) and arts else str(arts)
+                        top_artists.append(
+                            ListeningEntry(name=name, scrobbles=e.get("scrobbles", 0))
+                        )
+            async with s.get(
+                f"{base}/apis/mlj_1/charts/tracks",
+                params={"since": since, **params_auth},
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    for e in (data.get("list") or [])[:10]:
+                        tr = e.get("track") or {}
+                        arts = tr.get("artists") or []
+                        top_tracks.append(
+                            ListeningEntry(
+                                name=tr.get("title", "?"),
+                                artist=arts[0] if arts else None,
+                                scrobbles=e.get("scrobbles", 0),
+                            )
+                        )
+                        total += e.get("scrobbles", 0)
+    except Exception:
+        # Maloja not reachable / no data yet — return an empty-but-enabled view.
+        return ListeningResponse(enabled=True, period_days=days)
+
+    return ListeningResponse(
+        enabled=True,
+        top_artists=top_artists,
+        top_tracks=top_tracks,
+        total_scrobbles=total,
+        period_days=days,
+    )
+
+
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 async def get_leaderboard(db: DbSession) -> LeaderboardResponse:
     """Get user rankings by song count."""

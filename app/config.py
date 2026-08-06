@@ -139,6 +139,40 @@ class Settings(BaseSettings):
         description="Apple Music API developer token (JWT)",
     )
 
+    # --- Scrobble-based auto-add (multi-scrobbler + Maloja) ---
+    scrobbler_enabled: bool = Field(
+        default=False,
+        description="Enable polling multi-scrobbler for friends' plays to auto-add music",
+    )
+    multiscrobbler_url: str = Field(
+        default="http://multi-scrobbler:9078",
+        description="Base URL of the multi-scrobbler instance (per-friend play data)",
+    )
+    maloja_url: str = Field(
+        default="http://maloja:42010",
+        description="Base URL of the Maloja scrobble store (durable play counts + stats)",
+    )
+    maloja_api_key: str = Field(
+        default="",
+        description="Maloja API key",
+    )
+    scrobble_add_threshold: int = Field(
+        default=3,
+        description="Add a track after a friend has played it at least this many times",
+    )
+    scrobble_lookback_days: int = Field(
+        default=7,
+        description="Only consider plays within this many days when auto-adding",
+    )
+    scrobble_poll_interval_seconds: int = Field(
+        default=3600,
+        description="How often to poll multi-scrobbler/Maloja for new qualifying plays",
+    )
+    scrobble_announce_in_mattermost: bool = Field(
+        default=True,
+        description="Announce scrobble-based auto-adds in the Mattermost channel",
+    )
+
     @property
     def ytdlp_opts(self) -> dict:
         """Build a yt-dlp options dictionary from settings."""

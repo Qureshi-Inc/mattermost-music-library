@@ -22,6 +22,7 @@ _mattermost_ws_task: asyncio.Task | None = None
 _pipeline_task: asyncio.Task | None = None
 _pipeline_instance = None
 _weekly_playlist_task: asyncio.Task | None = None
+_scrobble_watcher_task: asyncio.Task | None = None
 
 
 async def _weekly_playlist_warmer() -> None:
@@ -48,6 +49,44 @@ async def _weekly_playlist_warmer() -> None:
             logger.error("Weekly playlist warmer failed", exc_info=exc)
         # Re-check daily; the ISO-week check above makes the actual rebuild weekly.
         await asyncio.sleep(86400)
+
+
+async def _scrobble_watcher_loop() -> None:
+    """Poll multi-scrobbler for friends' plays and auto-add popular tracks."""
+    settings = get_settings()
+    if not settings.scrobbler_enabled:
+        logger.info("Scrobble watcher disabled (scrobbler_enabled=false)")
+        return
+
+    # Let the pipeline + listener settle first.
+    await asyncio.sleep(45)
+
+    try:
+        from app.jobs.pipeline import get_pipeline
+        from app.jobs.queue import JobQueue
+        from app.jobs.scrobbler import ScrobbleWatcher
+    except ImportError:
+        logger.warning("Scrobble watcher module unavailable -- skipping")
+        return
+
+    watcher = ScrobbleWatcher(queue=JobQueue(), pipeline=get_pipeline())
+    logger.info(
+        "Scrobble watcher started (threshold=%d plays / %d days, every %ds)",
+        settings.scrobble_add_threshold,
+        settings.scrobble_lookback_days,
+        settings.scrobble_poll_interval_seconds,
+    )
+    while True:
+        try:
+            # Refresh the pipeline handle in case it started after us.
+            watcher.pipeline = get_pipeline() or watcher.pipeline
+            await watcher.poll_once()
+        except asyncio.CancelledError:
+            await watcher.close()
+            raise
+        except Exception as exc:
+            logger.error("Scrobble watcher pass failed", exc_info=exc)
+        await asyncio.sleep(settings.scrobble_poll_interval_seconds)
 
 
 async def _start_mattermost_listener() -> None:
@@ -139,6 +178,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         _weekly_playlist_warmer(), name="weekly-playlist-warmer"
     )
 
+    # Start the scrobble watcher (auto-add from friends' listening)
+    global _scrobble_watcher_task
+    _scrobble_watcher_task = asyncio.create_task(
+        _scrobble_watcher_loop(), name="scrobble-watcher"
+    )
+
     yield
 
     # --- Shutdown ---
@@ -162,6 +207,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         with suppress(asyncio.CancelledError):
             await _weekly_playlist_task
         logger.info("Weekly playlist warmer stopped")
+
+    # Cancel the scrobble watcher
+    if _scrobble_watcher_task is not None and not _scrobble_watcher_task.done():
+        _scrobble_watcher_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _scrobble_watcher_task
+        logger.info("Scrobble watcher stopped")
 
     # Dispose of database engine
     await dispose_engine()
