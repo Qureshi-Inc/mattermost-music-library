@@ -74,23 +74,28 @@ class ScrobbleWatcher:
         # Only "source" components represent a friend's listening feed.
         return [c for c in data if c.get("mode") == "source"]
 
-    async def _recent_plays(self, source_name: str) -> list[dict]:
+    async def _recent_plays(self, component_id: int) -> list[dict]:
         """Return recent plays for one source component.
 
-        multi-scrobbler exposes `/api/components/<name>/plays`. Each play has a
-        `data` block with { track, artists, playDate, ... }.
+        multi-scrobbler exposes `/api/components/<numeric-id>/plays` (it rejects
+        the name with "Component id must be a number"). The response is
+        `{"data": [ {play: {data: {track, artists:[{name}], playDate}}} ], meta}`.
+        Returns the raw list under `data`.
         """
         session = await self._get_session()
-        url = f"{self._settings.multiscrobbler_url}/api/components/{source_name}/plays"
+        url = f"{self._settings.multiscrobbler_url}/api/components/{component_id}/plays"
         try:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status != 200:
-                    logger.debug("plays for %s returned %d", source_name, resp.status)
+                    logger.debug("plays for id=%s returned %d", component_id, resp.status)
                     return []
-                return await resp.json()
+                body = await resp.json()
         except Exception as exc:
-            logger.debug("plays fetch failed for %s: %s", source_name, exc)
+            logger.debug("plays fetch failed for id=%s: %s", component_id, exc)
             return []
+        if isinstance(body, dict):
+            return body.get("data") or []
+        return body if isinstance(body, list) else []
 
     # --- Core loop ----------------------------------------------------------
 
@@ -112,18 +117,31 @@ class ScrobbleWatcher:
 
         for src in sources:
             source_name = src.get("name") or src.get("uid") or str(src.get("id"))
-            plays = await self._recent_plays(source_name)
+            component_id = src.get("id")
+            if component_id is None:
+                continue
+            plays = await self._recent_plays(component_id)
             # Tally plays within the lookback window per (artist, track).
             counts: dict[tuple[str, str], dict] = {}
-            for p in plays:
-                d = p.get("data") or {}
+            for entry in plays:
+                # Each entry: { play: { data: {track, artists:[{name}], ...} }, playedAt }
+                d = ((entry.get("play") or {}).get("data")) or entry.get("data") or {}
                 track = d.get("track")
                 artists = d.get("artists") or []
-                artist = artists[0] if artists else d.get("artist")
+                # artists is a list of {"name": ...} objects (or plain strings).
+                artist = None
+                if artists:
+                    first = artists[0]
+                    artist = first.get("name") if isinstance(first, dict) else first
+                artist = artist or d.get("artist")
                 if not track or not artist:
                     continue
                 # Filter by play date when present.
-                pd = d.get("playDate") or p.get("playDate")
+                pd = (
+                    d.get("playDate")
+                    or entry.get("playedAt")
+                    or d.get("playDateCompleted")
+                )
                 if pd and not self._within(pd, cutoff):
                     continue
                 key = (_norm(artist), _norm(track))
