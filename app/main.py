@@ -77,18 +77,25 @@ async def _scrobble_watcher_loop() -> None:
         settings.scrobble_poll_interval_seconds,
     )
     while True:
+        interval = settings.scrobble_poll_interval_seconds
         try:
             # Refresh the pipeline handle in case it started after us.
             watcher.pipeline = get_pipeline() or watcher.pipeline
-            await watcher.poll_once()
-            # Detect expired/broken sources and DM the affected user a re-link.
-            await watcher.check_health()
+            # If multi-scrobbler has no sources ready yet (e.g. both containers
+            # restarted together), retry soon instead of losing a full interval.
+            sources = await watcher._list_source_components()
+            if not sources:
+                interval = min(interval, 120)
+            else:
+                await watcher.poll_once()
+                # Detect expired sources and DM the user a re-link.
+                await watcher.check_health()
         except asyncio.CancelledError:
             await watcher.close()
             raise
         except Exception as exc:
             logger.error("Scrobble watcher pass failed", exc_info=exc)
-        await asyncio.sleep(settings.scrobble_poll_interval_seconds)
+        await asyncio.sleep(interval)
 
 
 async def _start_mattermost_listener() -> None:
