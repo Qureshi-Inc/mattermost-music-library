@@ -461,28 +461,32 @@ class JobPipeline:
                 enriched["artist"] = best["artistName"]
             if not enriched.get("album") and best.get("collectionName"):
                 enriched["album"] = best["collectionName"]
+
+            # Only take artwork/links/album metadata from iTunes when the match
+            # is actually the same song. A fuzzy iTunes hit on a DIFFERENT track
+            # (e.g. searching "Still The Same" returns "Dark Horse feat. Juicy
+            # J") would otherwise embed the WRONG album cover.
+            if best.get("trackViewUrl"):
+                extra["apple_music_url"] = best["trackViewUrl"]
+            if best.get("trackId"):
+                extra["apple_music_id"] = str(best["trackId"])
+            if best.get("artworkUrl100"):
+                extra["artwork_url"] = best["artworkUrl100"].replace("100x100", "600x600")
+            if best.get("primaryGenreName"):
+                extra["genre"] = best["primaryGenreName"]
+            if best.get("releaseDate"):
+                extra["release_date"] = best["releaseDate"]
+            if best.get("trackNumber"):
+                extra["track_number"] = best["trackNumber"]
+            if best.get("discNumber"):
+                extra["disc_number"] = best["discNumber"]
         else:
-            # iTunes returned a different song — only take non-conflicting extras
+            # iTunes returned a different song — take NOTHING from it (no wrong
+            # cover art, no wrong album/genre). Fall back to source thumbnail.
             logger.warning(
-                "iTunes title mismatch: '%s' vs '%s', skipping title/artist override",
+                "iTunes title mismatch: '%s' vs '%s', ignoring iTunes result entirely",
                 original_title, itunes_title,
             )
-
-        # Capture the Apple Music page URL so the success message can link it.
-        if best.get("trackViewUrl"):
-            extra["apple_music_url"] = best["trackViewUrl"]
-        if best.get("trackId"):
-            extra["apple_music_id"] = str(best["trackId"])
-        if best.get("artworkUrl100"):
-            extra["artwork_url"] = best["artworkUrl100"].replace("100x100", "600x600")
-        if best.get("primaryGenreName"):
-            extra["genre"] = best["primaryGenreName"]
-        if best.get("releaseDate"):
-            extra["release_date"] = best["releaseDate"]
-        if best.get("trackNumber"):
-            extra["track_number"] = best["trackNumber"]
-        if best.get("discNumber"):
-            extra["disc_number"] = best["discNumber"]
 
         enriched["extra"] = extra
         logger.info(
