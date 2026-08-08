@@ -121,10 +121,21 @@ class ScrobbleWatcher:
             if component_id is None:
                 continue
             plays = await self._recent_plays(component_id)
-            # Tally plays within the lookback window per (artist, track).
+            # Tally plays within the lookback window per (artist, track), counting
+            # DISTINCT multi-scrobbler playHashes — NOT raw feed appearances.
+            #
+            # Why playHash: multi-scrobbler's Apple "recently played" feed re-dumps
+            # your history on every restart, stamping each old play with a fresh
+            # timestamp. Counting appearances (or distinct playDates) inflated a
+            # single listen into "4 plays" across 4 restarts and flooded the
+            # library. But every one of those dumps carries the SAME playHash
+            # (hash of track+artist+context, not the fake timestamp), so counting
+            # distinct playHashes collapses restart-dumps to the true play count.
+            # A genuine repeat-listen produces a distinct playHash.
             counts: dict[tuple[str, str], dict] = {}
             for entry in plays:
-                # Each entry: { play: { data: {track, artists:[{name}], ...} }, playedAt }
+                # Each entry: { play: { data: {track, artists:[{name}], ...} },
+                #               playedAt, playHash, uid }
                 d = ((entry.get("play") or {}).get("data")) or entry.get("data") or {}
                 track = d.get("track")
                 artists = d.get("artists") or []
@@ -144,20 +155,23 @@ class ScrobbleWatcher:
                 )
                 if pd and not self._within(pd, cutoff):
                     continue
+                # Dedup key for a distinct play: prefer playHash, fall back to uid.
+                play_key = entry.get("playHash") or entry.get("uid") or pd
                 key = (_norm(artist), _norm(track))
                 slot = counts.setdefault(
-                    key, {"artist": artist, "track": track, "n": 0}
+                    key, {"artist": artist, "track": track, "hashes": set()}
                 )
-                slot["n"] += 1
+                slot["hashes"].add(play_key)
 
             for (nart, ntrk), info in counts.items():
-                if info["n"] < threshold:
+                n = len(info["hashes"])
+                if n < threshold:
                     continue
                 added = await self._maybe_enqueue(
                     source_name=source_name,
                     artist=info["artist"],
                     track=info["track"],
-                    plays=info["n"],
+                    plays=n,
                     norm_key=f"{nart}||{ntrk}",
                 )
                 if added:
