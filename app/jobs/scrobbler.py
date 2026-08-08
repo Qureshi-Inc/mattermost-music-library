@@ -232,9 +232,11 @@ class ScrobbleWatcher:
                 return
             # Only Apple currently needs manual re-link; Spotify auto-refreshes.
             service = "Apple Music" if stype == "applemusic" else stype
+            # Clean URL — the page is public and prefills name/service; no key.
+            svc_param = "applemusic" if stype == "applemusic" else stype
             relink = (
                 f"{self._settings.relink_base_url}/"
-                f"?key={self._settings.relink_secret}&name={source_name}"
+                f"?name={source_name}&service={svc_param}"
             )
             msg = (
                 f"⚠️ Your **{service}** connection to Slaptastic stopped working "
