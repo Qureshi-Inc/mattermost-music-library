@@ -172,6 +172,18 @@ class Settings(BaseSettings):
         default=True,
         description="Announce scrobble-based auto-adds in the Mattermost channel",
     )
+    relink_base_url: str = Field(
+        default="https://scrobble.qureshi.io/relink",
+        description="Public base URL of the Apple Music re-link helper",
+    )
+    relink_secret: str = Field(
+        default="",
+        description="Secret key gating the re-link helper (per-user DM links)",
+    )
+    scrobble_health_alert_hours: int = Field(
+        default=6,
+        description="Re-alert cooldown: don't DM a user about the same dead source more than once per N hours",
+    )
 
     @property
     def ytdlp_opts(self) -> dict:

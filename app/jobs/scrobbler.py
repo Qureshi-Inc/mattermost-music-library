@@ -167,6 +167,134 @@ class ScrobbleWatcher:
             logger.info("Scrobble watcher enqueued %d new track(s)", enqueued)
         return enqueued
 
+    # --- Health / token-expiry monitoring -----------------------------------
+
+    async def check_health(self) -> int:
+        """Detect broken sources (e.g. expired Apple media-user-token) and DM
+        the affected user a personal re-link link in Mattermost.
+
+        Returns the number of alerts sent this pass.
+        """
+        session = await self._get_session()
+        url = f"{self._settings.multiscrobbler_url}/api/status"
+        try:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return 0
+                data = await resp.json()
+        except Exception as exc:
+            logger.debug("health: multi-scrobbler status unreachable: %s", exc)
+            return 0
+
+        alerts = 0
+        for s in data.get("sources", []):
+            name = s.get("name")
+            stype = s.get("type")
+            status = (s.get("status") or "").lower()
+            authed = s.get("authed")
+            # Healthy sources report status "Polling"/"Running". A broken source
+            # has lost auth (authed False) or dropped out of polling. NOTE:
+            # `hasAuthInteraction` only means the source TYPE supports an auth
+            # step (Spotify has it and is perfectly healthy) — it is NOT a
+            # broken signal, so we don't use it here.
+            healthy_states = ("polling", "running", "getting ready", "idle", "")
+            broken = authed is False or (status not in healthy_states)
+            if not name or not broken:
+                continue
+            if await self._recently_alerted(name):
+                continue
+            await self._alert_user_relink(name, stype)
+            await self._mark_alerted(name)
+            alerts += 1
+        return alerts
+
+    async def _recently_alerted(self, source_name: str) -> bool:
+        """Rate-limit: was this source alerted within the cooldown window?"""
+        from app.jobs.scrobble_state import last_alert_at
+
+        ts = await last_alert_at(source_name)
+        if ts is None:
+            return False
+        cooldown = timedelta(hours=self._settings.scrobble_health_alert_hours)
+        return (datetime.now(timezone.utc) - ts) < cooldown
+
+    async def _mark_alerted(self, source_name: str) -> None:
+        from app.jobs.scrobble_state import record_alert
+
+        await record_alert(source_name)
+
+    async def _alert_user_relink(self, source_name: str, stype: str) -> None:
+        """DM the user (by Mattermost username == source name) a re-link link."""
+        try:
+            mm = getattr(self.pipeline, "mattermost", None)
+            if mm is None:
+                logger.warning("health: no Mattermost client to alert %s", source_name)
+                return
+            # Only Apple currently needs manual re-link; Spotify auto-refreshes.
+            service = "Apple Music" if stype == "applemusic" else stype
+            relink = (
+                f"{self._settings.relink_base_url}/"
+                f"?key={self._settings.relink_secret}&name={source_name}"
+            )
+            msg = (
+                f"⚠️ Your **{service}** connection to Slaptastic stopped working "
+                f"(the login token expired — this happens periodically).\n\n"
+                f"**One click to fix it:** [Re-link {service}]({relink})\n\n"
+                f"Sign in when prompted and your listening will reconnect automatically."
+            )
+            # Prefer a direct message to the user; fall back to channel mention.
+            sent = await self._dm_user(mm, source_name, msg)
+            if not sent and self._settings.mattermost_channel:
+                await mm.post_message(  # type: ignore[attr-defined]
+                    channel_id=self._settings.mattermost_channel,
+                    message=f"@{source_name} {msg}",
+                )
+            logger.info("health: alerted %s to re-link %s", source_name, service)
+        except Exception as e:
+            logger.warning("health: failed to alert %s: %s", source_name, e)
+
+    async def _dm_user(self, mm, username: str, message: str) -> bool:
+        """Open a DM channel with the user and post the message. Best-effort."""
+        settings = self._settings
+        session = await self._get_session()
+        base = settings.mattermost_url
+        tok = settings.mattermost_token
+        if not base or not tok:
+            return False
+        headers = {"Authorization": f"Bearer {tok}"}
+        try:
+            # Resolve target user id + the bot's own id.
+            async with session.get(
+                f"{base}/api/v4/users/username/{username}", headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as r:
+                if r.status != 200:
+                    return False
+                target_id = (await r.json()).get("id")
+            async with session.get(
+                f"{base}/api/v4/users/me", headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as r:
+                if r.status != 200:
+                    return False
+                bot_id = (await r.json()).get("id")
+            if not target_id or not bot_id:
+                return False
+            # Create (or fetch) the DM channel between bot and user.
+            async with session.post(
+                f"{base}/api/v4/channels/direct", headers=headers,
+                json=[bot_id, target_id],
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as r:
+                if r.status not in (200, 201):
+                    return False
+                dm_channel_id = (await r.json()).get("id")
+            await mm.post_message(channel_id=dm_channel_id, message=message)  # type: ignore[attr-defined]
+            return True
+        except Exception as e:
+            logger.debug("DM to %s failed: %s", username, e)
+            return False
+
     @staticmethod
     def _within(play_date: str, cutoff: datetime) -> bool:
         """True if an ISO-ish play date is at/after the cutoff."""

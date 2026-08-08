@@ -81,6 +81,8 @@ async def _scrobble_watcher_loop() -> None:
             # Refresh the pipeline handle in case it started after us.
             watcher.pipeline = get_pipeline() or watcher.pipeline
             await watcher.poll_once()
+            # Detect expired/broken sources and DM the affected user a re-link.
+            await watcher.check_health()
         except asyncio.CancelledError:
             await watcher.close()
             raise

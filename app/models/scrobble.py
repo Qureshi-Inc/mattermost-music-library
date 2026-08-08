@@ -22,3 +22,15 @@ class ScrobbleAdd(TimestampMixin, Base):
     artist: Mapped[str | None] = mapped_column(String(512), nullable=True)
     track: Mapped[str | None] = mapped_column(String(512), nullable=True)
     play_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class ScrobbleHealthAlert(TimestampMixin, Base):
+    """Tracks the last time we DM'd a user that their source needs re-linking,
+    so we don't spam them every polling pass while a token is expired."""
+
+    __tablename__ = "scrobble_health_alerts"
+    __table_args__ = (
+        UniqueConstraint("source_name", name="uq_scrobble_health_source"),
+    )
+
+    source_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
