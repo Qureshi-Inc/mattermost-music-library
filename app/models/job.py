@@ -60,6 +60,11 @@ class Job(TimestampMixin, Base):
     mattermost_post_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True
     )
+    # The bot's own status/approval message post id — used to map an approval
+    # reaction (✅/❌) on that message back to this job.
+    status_post_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     mattermost_channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     requester_user_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True

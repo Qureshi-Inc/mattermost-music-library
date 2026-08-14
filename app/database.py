@@ -71,6 +71,25 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Lightweight idempotent migrations for columns added after a table already
+    # exists (create_all won't ALTER existing tables). Safe to run every start.
+    _added_columns = [
+        ("jobs", "status_post_id", "VARCHAR(64)"),
+    ]
+    async with async_session_factory() as session:
+        for table, col, coltype in _added_columns:
+            try:
+                res = await session.execute(text(f"PRAGMA table_info({table})"))
+                cols = {row[1] for row in res}
+                if col not in cols:
+                    await session.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+                    )
+                    await session.commit()
+            except Exception:
+                # Non-SQLite backends / race: ignore; model create_all covers new DBs.
+                await session.rollback()
+
 
 async def check_db_connectivity() -> bool:
     """Check whether the database is reachable.

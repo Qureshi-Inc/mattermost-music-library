@@ -107,7 +107,9 @@ async def run_websocket_listener() -> None:
                 message="⏳ Processing...",
             )
 
-            # Store the reply post ID so the pipeline can edit it
+            # Store the reply post ID so the pipeline can edit it, AND persist
+            # it on the job so an approval reaction (✅/❌) on that message can be
+            # mapped back to this job even across restarts.
             if result and result.get("id"):
                 from app.jobs.pipeline import get_pipeline
                 pipeline = get_pipeline()
@@ -117,6 +119,13 @@ async def run_websocket_listener() -> None:
                     logger.info("Stored status post_id=%s for job_key=%s", result["id"], job_key)
                 else:
                     logger.warning("Pipeline not available yet, status post won't be editable")
+                try:
+                    async with async_session_factory() as session:
+                        q = JobQueue(session)
+                        await q.set_status_post_id(job.id, result["id"])
+                        await session.commit()
+                except Exception as e:
+                    logger.warning("Could not persist status_post_id: %s", e)
 
     async def on_playlist(message: IncomingMessage) -> None:
         """Handle a detected playlist link in the channel."""
@@ -361,9 +370,62 @@ async def run_websocket_listener() -> None:
             if pipeline:
                 pipeline._status_post_ids[str(job.id)] = result["id"]
 
+    async def on_reaction(post_id: str, emoji_name: str, added: bool) -> None:
+        """Approve/reject a job that's waiting in REVIEWING via emoji reaction.
+
+        React ✅ (white_check_mark / +1 / heavy_check_mark) on the bot's
+        'Needs approval' message to approve; ❌ (x / -1 / no_entry) to reject.
+        The song is attributed to the ORIGINAL poster (job.requester_user_id),
+        never the person who reacted.
+        """
+        if not added:
+            return
+        approve_emojis = {"white_check_mark", "heavy_check_mark", "+1", "thumbsup", "ballot_box_with_check"}
+        reject_emojis = {"x", "-1", "thumbsdown", "no_entry", "no_entry_sign", "negative_squared_cross_mark"}
+        if emoji_name not in approve_emojis and emoji_name not in reject_emojis:
+            return
+
+        from app.jobs.queue import JobQueue
+        from app.models.job import JobStatus
+
+        async with async_session_factory() as session:
+            queue = JobQueue(session)
+            job = await queue.get_job_by_status_post(post_id)
+            if job is None:
+                logger.debug("Reaction on post %s matched no job", post_id)
+                return
+            if job.status != JobStatus.REVIEWING:
+                logger.info(
+                    "Reaction on job %s ignored (status=%s, not reviewing)",
+                    job.id, job.status.value,
+                )
+                return
+
+            if emoji_name in reject_emojis:
+                await queue.mark_failed(job.id, "Rejected via ❌ reaction")
+                logger.info("Job %s rejected via reaction", job.id)
+                pipeline = get_pipeline()
+                if pipeline:
+                    await pipeline._post_status(job, "❌ Rejected — not added.")
+                return
+
+            # Approve: set APPROVED so the pipeline resumes past the gate, and
+            # re-queue by flipping to PENDING (the approve stage honors the
+            # human APPROVED override). Attribution stays with the original
+            # requester already stored on the job.
+            await queue.update_status(job.id, JobStatus.APPROVED)
+            logger.info("Job %s approved via reaction by-original-poster", job.id)
+            pipeline = get_pipeline()
+            if pipeline:
+                await pipeline._post_status(job, "✅ Approved — downloading now…")
+                # Kick the pipeline to process it immediately.
+                import asyncio as _asyncio
+                _asyncio.create_task(pipeline.process_job(job.id))
+
     client.on_music_link(on_music_link)
     client.on_playlist(on_playlist)
     client.on_command(on_command)
+    client.on_reaction(on_reaction)
 
     logger.info(
         "Starting Mattermost WebSocket listener",

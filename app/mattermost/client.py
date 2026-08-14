@@ -119,6 +119,7 @@ class MattermostClient:
         self._on_music_link: EventCallback | None = None
         self._on_playlist: EventCallback | None = None
         self._on_command: EventCallback | None = None
+        self._on_reaction = None  # callback(post_id, emoji_name, added: bool)
 
     @property
     def api_url(self) -> str:
@@ -148,6 +149,13 @@ class MattermostClient:
     def on_command(self, callback: EventCallback) -> None:
         """Register a callback for when an @slaptastic command is detected."""
         self._on_command = callback
+
+    def on_reaction(self, callback) -> None:
+        """Register a callback for emoji reactions.
+
+        Callback signature: async (post_id: str, emoji_name: str, added: bool).
+        """
+        self._on_reaction = callback
 
     async def start(self) -> None:
         """Start the client, connecting to WebSocket and listening for events."""
@@ -353,6 +361,26 @@ class MattermostClient:
 
         if event:
             logger.info("WebSocket event: %s", event)
+
+        # Emoji reactions (approve/reject a "Needs approval" message).
+        if event in ("reaction_added", "reaction_removed") and self._on_reaction:
+            try:
+                rdata = data.get("data", {})
+                reaction_json = rdata.get("reaction")
+                reaction = (
+                    json.loads(reaction_json)
+                    if isinstance(reaction_json, str)
+                    else (reaction_json or {})
+                )
+                post_id = reaction.get("post_id", "")
+                emoji_name = reaction.get("emoji_name", "")
+                if post_id and emoji_name:
+                    await self._on_reaction(
+                        post_id, emoji_name, event == "reaction_added"
+                    )
+            except Exception:
+                logger.exception("Error handling reaction event")
+            return
 
         # We only care about new_post events
         if event != "posted":

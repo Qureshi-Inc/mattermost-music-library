@@ -97,6 +97,23 @@ class JobQueue:
             )
             return result.scalar_one_or_none()
 
+    async def set_status_post_id(self, job_id: uuid.UUID, post_id: str) -> None:
+        """Persist the bot's status/approval message post id on the job."""
+        async with async_session_factory() as session:
+            result = await session.execute(select(Job).where(Job.id == job_id))
+            job = result.scalar_one_or_none()
+            if job:
+                job.status_post_id = post_id
+                await session.commit()
+
+    async def get_job_by_status_post(self, post_id: str) -> Job | None:
+        """Find the job whose bot status/approval message is `post_id`."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Job).where(Job.status_post_id == post_id)
+            )
+            return result.scalar_one_or_none()
+
     async def list_jobs(
         self,
         status: JobStatus | None = None,

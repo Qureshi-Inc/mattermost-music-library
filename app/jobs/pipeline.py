@@ -934,6 +934,17 @@ class JobPipeline:
         auto_threshold = self._settings.auto_approve_threshold
         review_threshold = self._settings.manual_review_threshold
 
+        # Human override: if a moderator already approved this job (e.g. via a
+        # ✅ reaction), it re-enters the pipeline as APPROVED — honor that and
+        # skip the score gate entirely so it proceeds to download.
+        try:
+            fresh = await self.queue.get_job(job.id)
+            if fresh is not None and fresh.status == JobStatus.APPROVED:
+                await self._post_status(job, f"Approved by moderator (score: {score:.2f})")
+                return True
+        except Exception:
+            pass
+
         if score >= auto_threshold and self.auto_approve:
             # Auto-approve high confidence matches
             await self.queue.update_status(job.id, JobStatus.APPROVED)
