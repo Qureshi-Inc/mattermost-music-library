@@ -18,6 +18,9 @@ services:
       - jellyfin_config:/config
       - music_data:/media/music:ro
       - /media:/zurg:rslave
+      # Locally-downloaded movies (copied off Real-Debrid so playback doesn't
+      # stream live from RD -- avoids the multi-user connection warnings).
+      - /home/opti3/media/movies-local:/media/movies-local:ro
     restart: unless-stopped
 
   whatsapp-worker:
