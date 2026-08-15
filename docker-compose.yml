@@ -14,6 +14,15 @@ services:
     image: linuxserver/jellyfin
     expose:
       - "8096"
+    # Intel Alder Lake iGPU passthrough for hardware transcoding (QSV/VAAPI).
+    # Without this, 4K HDR transcodes run in software and crash the CPU
+    # (ffmpeg exit 137). group_add = host render(993)+video(44) GIDs so the
+    # container user can open /dev/dri/renderD128.
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "993"
+      - "44"
     volumes:
       - jellyfin_config:/config
       - music_data:/media/music:ro
