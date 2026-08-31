@@ -73,6 +73,17 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 3,
+    description: 'Add video send idempotency table',
+    up: `
+      CREATE TABLE IF NOT EXISTS video_sends (
+        idempotency_key  TEXT PRIMARY KEY,
+        wa_message_id    TEXT,
+        sent_at          INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

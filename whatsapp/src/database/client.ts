@@ -210,6 +210,23 @@ export class DatabaseClient {
     return row?.value || null;
   }
 
+  // ---- Video Send Idempotency ----
+
+  /** Returns { found: false } when key is unknown; { found: true, messageId } when already sent. */
+  checkVideoSend(idempotencyKey: string): { found: false } | { found: true; messageId: string | null } {
+    const row = this.db.prepare(
+      'SELECT wa_message_id FROM video_sends WHERE idempotency_key = ?'
+    ).get(idempotencyKey) as { wa_message_id: string | null } | undefined;
+    if (!row) return { found: false };
+    return { found: true, messageId: row.wa_message_id ?? null };
+  }
+
+  recordVideoSend(idempotencyKey: string, waMessageId: string | null): void {
+    this.db.prepare(
+      'INSERT OR IGNORE INTO video_sends (idempotency_key, wa_message_id) VALUES (?, ?)'
+    ).run(idempotencyKey, waMessageId || null);
+  }
+
   close(): void {
     this.db.close();
   }

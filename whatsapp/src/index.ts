@@ -136,13 +136,26 @@ async function main(): Promise<void> {
       req.on('data', (chunk: string) => body += chunk);
       req.on('end', async () => {
         try {
-          const { videoUrl, videoBase64, caption, groupJid, authHeader } = JSON.parse(body);
+          const { videoUrl, videoBase64, caption, groupJid, authHeader, idempotencyKey } = JSON.parse(body);
+
+          // Idempotency: if this key was already sent, return the cached result
+          if (idempotencyKey) {
+            const check = db.checkVideoSend(idempotencyKey);
+            if (check.found) {
+              console.log(`[bridge] send-video already_sent key=${idempotencyKey}`);
+              res.end(JSON.stringify({ status: 'already_sent', messageId: check.messageId }));
+              return;
+            }
+          }
+
           if (videoBase64) {
             const buf = Buffer.from(videoBase64, 'base64');
             await whatsapp.sendVideoBuffer(buf, caption, groupJid);
+            if (idempotencyKey) db.recordVideoSend(idempotencyKey, null);
             res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
           } else if (videoUrl) {
             await whatsapp.sendVideoToGroup(videoUrl, caption, groupJid, authHeader);
+            if (idempotencyKey) db.recordVideoSend(idempotencyKey, null);
             res.end(JSON.stringify({ status: 'sent', videoUrl }));
           } else {
             res.statusCode = 400;
