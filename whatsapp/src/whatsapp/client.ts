@@ -7,7 +7,7 @@ import { Config } from '../config';
 import { WhatsAppConnection } from './connection';
 
 export class WhatsAppClient {
-  private connection: WhatsAppConnection;
+  readonly connection: WhatsAppConnection;
   private readonly groupJid: string;
   private participantCache: Map<string, string> = new Map();
   private cacheExpiry = 0;
