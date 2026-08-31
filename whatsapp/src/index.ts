@@ -136,14 +136,18 @@ async function main(): Promise<void> {
       req.on('data', (chunk: string) => body += chunk);
       req.on('end', async () => {
         try {
-          const { videoUrl, caption, groupJid, authHeader } = JSON.parse(body);
-          if (!videoUrl) {
+          const { videoUrl, videoBase64, caption, groupJid, authHeader } = JSON.parse(body);
+          if (videoBase64) {
+            const buf = Buffer.from(videoBase64, 'base64');
+            await whatsapp.sendVideoBuffer(buf, caption, groupJid);
+            res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
+          } else if (videoUrl) {
+            await whatsapp.sendVideoToGroup(videoUrl, caption, groupJid, authHeader);
+            res.end(JSON.stringify({ status: 'sent', videoUrl }));
+          } else {
             res.statusCode = 400;
-            res.end(JSON.stringify({ error: 'videoUrl required' }));
-            return;
+            res.end(JSON.stringify({ error: 'videoUrl or videoBase64 required' }));
           }
-          await whatsapp.sendVideoToGroup(videoUrl, caption, groupJid, authHeader);
-          res.end(JSON.stringify({ status: 'sent', videoUrl }));
         } catch (err: any) {
           console.error('[bridge] send-video error:', err.message);
           res.statusCode = 500;

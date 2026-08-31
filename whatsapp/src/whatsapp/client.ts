@@ -145,6 +145,18 @@ export class WhatsAppClient {
   }
 
   /**
+   * Send a video to a group from a pre-downloaded buffer.
+   */
+  async sendVideoBuffer(
+    videoBuffer: Buffer,
+    caption?: string,
+    groupJid?: string,
+  ): Promise<void> {
+    const targetJid = groupJid || this.groupJid;
+    await this.connection.sendVideo(targetJid, videoBuffer, 'video/mp4', caption);
+  }
+
+  /**
    * Get all WhatsApp groups the bot is in.
    */
   async getGroups(): Promise<Array<{ id: string; subject: string; participants: number }>> {
