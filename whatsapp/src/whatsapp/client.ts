@@ -99,6 +99,52 @@ export class WhatsAppClient {
   }
 
   /**
+   * Send a video to a group by downloading it from a URL.
+   * authHeader is forwarded to the download request (e.g. PSN Bearer token).
+   */
+  async sendVideoToGroup(
+    videoUrl: string,
+    caption?: string,
+    groupJid?: string,
+    authHeader?: string,
+  ): Promise<void> {
+    const targetJid = groupJid || this.groupJid;
+    const https = await import('https');
+    const http = await import('http');
+
+    const videoBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const protocol = videoUrl.startsWith('https') ? https : http;
+      const headers: Record<string, string> = authHeader ? { Authorization: authHeader } : {};
+      const req = protocol.get(videoUrl, { headers }, (res) => {
+        // Follow redirects (up to 5)
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          resolve(new Promise<Buffer>((res2, rej2) => {
+            const protocol2 = res.headers.location!.startsWith('https') ? https : http;
+            protocol2.get(res.headers.location!, (r2) => {
+              const chunks: Buffer[] = [];
+              r2.on('data', (c: Buffer) => chunks.push(c));
+              r2.on('end', () => res2(Buffer.concat(chunks)));
+              r2.on('error', rej2);
+            }).on('error', rej2);
+          }));
+          return;
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+    });
+
+    await this.connection.sendVideo(targetJid, videoBuffer, 'video/mp4', caption);
+  }
+
+  /**
    * Get all WhatsApp groups the bot is in.
    */
   async getGroups(): Promise<Array<{ id: string; subject: string; participants: number }>> {

@@ -112,6 +112,20 @@ export class WhatsAppConnection extends EventEmitter {
   }
 
   /**
+   * Send a video message to a JID.
+   */
+  async sendVideo(jid: string, videoBuffer: Buffer, mimetype: string, caption?: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('WhatsApp not connected');
+    }
+    await this.socket.sendMessage(jid, {
+      video: videoBuffer,
+      mimetype,
+      caption: caption || undefined,
+    });
+  }
+
+  /**
    * Send a text message to a JID.
    */
   async sendMessage(jid: string, text: string, mentions?: string[]): Promise<void> {

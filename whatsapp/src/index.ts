@@ -127,6 +127,39 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (req.url === '/send-video' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: string) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { videoUrl, caption, groupJid, authHeader } = JSON.parse(body);
+          if (!videoUrl) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'videoUrl required' }));
+            return;
+          }
+          await whatsapp.sendVideoToGroup(videoUrl, caption, groupJid, authHeader);
+          res.end(JSON.stringify({ status: 'sent', videoUrl }));
+        } catch (err: any) {
+          console.error('[bridge] send-video error:', err.message);
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.url === '/groups' && req.method === 'GET') {
+      try {
+        const groups = await whatsapp.getGroups();
+        res.end(JSON.stringify({ groups }));
+      } catch (err: any) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'not found' }));
   });
