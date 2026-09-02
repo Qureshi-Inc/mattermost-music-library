@@ -170,6 +170,69 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (req.url === '/send-image' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { imageBase64, caption, groupJid, idempotencyKey } = JSON.parse(body);
+          if (!imageBase64) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'imageBase64 required' }));
+            return;
+          }
+          if (idempotencyKey) {
+            const check = db.checkVideoSend(idempotencyKey);
+            if (check.found) {
+              res.end(JSON.stringify({ status: 'already_sent', messageId: check.messageId }));
+              return;
+            }
+          }
+          const buf = Buffer.from(imageBase64, 'base64');
+          await whatsapp.sendImageBuffer(buf, caption, groupJid);
+          if (idempotencyKey) db.recordVideoSend(idempotencyKey, null);
+          res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
+        } catch (err: any) {
+          console.error('[bridge] send-image error:', err.message);
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.url === '/send-document' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { fileBase64, fileName, caption, groupJid, idempotencyKey } = JSON.parse(body);
+          if (!fileBase64) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'fileBase64 required' }));
+            return;
+          }
+          if (idempotencyKey) {
+            const check = db.checkVideoSend(idempotencyKey);
+            if (check.found) {
+              console.log(`[bridge] send-document already_sent key=${idempotencyKey}`);
+              res.end(JSON.stringify({ status: 'already_sent', messageId: check.messageId }));
+              return;
+            }
+          }
+          const buf = Buffer.from(fileBase64, 'base64');
+          await whatsapp.sendDocumentBuffer(buf, fileName || 'montage.mp4', caption, groupJid);
+          if (idempotencyKey) db.recordVideoSend(idempotencyKey, null);
+          res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
+        } catch (err: any) {
+          console.error('[bridge] send-document error:', err.message);
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
     if (req.url === '/groups' && req.method === 'GET') {
       try {
         const groups = await whatsapp.getGroups();

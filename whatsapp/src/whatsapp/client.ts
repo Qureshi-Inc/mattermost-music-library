@@ -156,6 +156,25 @@ export class WhatsAppClient {
     await this.connection.sendVideo(targetJid, videoBuffer, 'video/mp4', caption);
   }
 
+  async sendImageBuffer(
+    imageBuffer: Buffer,
+    caption?: string,
+    groupJid?: string,
+  ): Promise<void> {
+    const targetJid = groupJid || this.groupJid;
+    await this.connection.sendImage(targetJid, imageBuffer, caption);
+  }
+
+  async sendDocumentBuffer(
+    fileBuffer: Buffer,
+    fileName: string,
+    caption?: string,
+    groupJid?: string,
+  ): Promise<void> {
+    const targetJid = groupJid || this.groupJid;
+    await this.connection.sendDocument(targetJid, fileBuffer, 'video/mp4', fileName, caption);
+  }
+
   /**
    * Get all WhatsApp groups the bot is in.
    */

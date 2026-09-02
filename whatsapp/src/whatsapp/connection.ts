@@ -126,6 +126,34 @@ export class WhatsAppConnection extends EventEmitter {
   }
 
   /**
+   * Send an image message to a JID.
+   */
+  async sendImage(jid: string, imageBuffer: Buffer, caption?: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('WhatsApp not connected');
+    }
+    await this.socket.sendMessage(jid, {
+      image: imageBuffer,
+      caption: caption || undefined,
+    });
+  }
+
+  /**
+   * Send a document (file) to a JID — preserves full quality, no inline playback.
+   */
+  async sendDocument(jid: string, fileBuffer: Buffer, mimetype: string, fileName: string, caption?: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error('WhatsApp not connected');
+    }
+    await this.socket.sendMessage(jid, {
+      document: fileBuffer,
+      mimetype,
+      fileName,
+      caption: caption || undefined,
+    });
+  }
+
+  /**
    * Send a text message to a JID.
    */
   async sendMessage(jid: string, text: string, mentions?: string[]): Promise<void> {
