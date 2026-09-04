@@ -12,6 +12,7 @@
 import { loadConfig } from './config';
 import { MattermostClient } from './mattermost/client';
 import { WhatsAppClient } from './whatsapp/client';
+import { IngestForwarder } from './whatsapp/ingest-forwarder';
 import { DatabaseClient } from './database/client';
 import { NotificationHandler } from './notifications/handler';
 import { NotificationQueue } from './notifications/queue';
@@ -36,6 +37,15 @@ async function main(): Promise<void> {
 
   // Initialize WhatsApp client
   const whatsapp = new WhatsAppClient(config.whatsapp);
+
+  // Wire ingest forwarder — attaches to every new socket (including reconnects)
+  const ingestForwarder = new IngestForwarder(config.psnIngest);
+  whatsapp.connection.on('socket', (sock) => {
+    ingestForwarder.attach(sock);
+    if (config.psnIngest.url) {
+      console.log(`[bridge] PSN ingest forwarder attached (watching ${config.psnIngest.groupJids.length} group(s))`);
+    }
+  });
 
   // Initialize services
   const linkingService = new LinkingService(db, whatsapp);

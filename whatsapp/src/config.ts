@@ -20,6 +20,11 @@ export interface Config {
   database: {
     path: string;
   };
+  psnIngest: {
+    url: string;
+    secret: string;
+    groupJids: string[];
+  };
   logLevel: string;
 }
 
@@ -52,6 +57,14 @@ export function loadConfig(): Config {
     },
     database: {
       path: optionalEnv('DATABASE_PATH', './data/whatsapp-bridge.db'),
+    },
+    psnIngest: {
+      url: optionalEnv('PSN_INGEST_URL', ''),
+      secret: optionalEnv('PSN_INGEST_SECRET', ''),
+      groupJids: optionalEnv('PSN_INGEST_GROUP_JIDS', '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
     },
     logLevel: optionalEnv('LOG_LEVEL', 'info'),
   };

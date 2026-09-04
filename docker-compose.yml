@@ -49,6 +49,9 @@ services:
       - BOT_USERNAME=${BOT_USERNAME:-slaptastic}
       - DATABASE_PATH=/app/data/whatsapp-bridge.db
       - AUTH_STATE_PATH=/app/data/auth-state
+      - PSN_INGEST_URL=${PSN_INGEST_URL:-}
+      - PSN_INGEST_SECRET=${PSN_INGEST_SECRET:-}
+      - PSN_INGEST_GROUP_JIDS=${PSN_INGEST_GROUP_JIDS:-}
     volumes:
       - whatsapp_data:/app/data
     restart: unless-stopped

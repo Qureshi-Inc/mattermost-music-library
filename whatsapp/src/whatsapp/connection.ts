@@ -64,6 +64,8 @@ export class WhatsAppConnection extends EventEmitter {
       syncFullHistory: false,
     });
 
+    this.emit('socket', this.socket);
+
     // Save credentials on update
     this.socket.ev.on('creds.update', saveCreds);
 
