@@ -244,6 +244,29 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (req.url === '/send-audio' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { audioBase64, mimetype, groupJid } = JSON.parse(body);
+          if (!audioBase64) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'audioBase64 required' }));
+            return;
+          }
+          const buf = Buffer.from(audioBase64, 'base64');
+          await whatsapp.sendAudioBuffer(buf, mimetype || 'audio/ogg; codecs=opus', groupJid);
+          res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
+        } catch (err: any) {
+          console.error('[bridge] send-audio error:', err.message);
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
     if (req.url === '/react' && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk: any) => body += chunk);

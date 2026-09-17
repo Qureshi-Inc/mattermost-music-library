@@ -45,8 +45,8 @@ export class WhatsAppClient {
   async sendGroupNotification(
     text: string,
     mentionJids: string[] = [],
-  ): Promise<void> {
-    await this.connection.sendMessage(this.groupJid, text, mentionJids);
+  ): Promise<string | null> {
+    return this.connection.sendMessage(this.groupJid, text, mentionJids);
   }
 
   /**
@@ -173,6 +173,15 @@ export class WhatsAppClient {
   ): Promise<void> {
     const targetJid = groupJid || this.groupJid;
     await this.connection.sendDocument(targetJid, fileBuffer, 'video/mp4', fileName, caption);
+  }
+
+  async sendAudioBuffer(
+    audioBuffer: Buffer,
+    mimetype?: string,
+    groupJid?: string,
+  ): Promise<void> {
+    const targetJid = groupJid || this.groupJid;
+    await this.connection.sendAudio(targetJid, audioBuffer, mimetype);
   }
 
   /**

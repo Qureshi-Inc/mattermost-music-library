@@ -156,6 +156,20 @@ export class WhatsAppConnection extends EventEmitter {
   }
 
   /**
+   * Send an audio voice note to a JID. ptt=true makes it play inline as a voice message.
+   */
+  async sendAudio(jid: string, audioBuffer: Buffer, mimetype = 'audio/ogg; codecs=opus'): Promise<void> {
+    if (!this.socket) {
+      throw new Error('WhatsApp not connected');
+    }
+    await this.socket.sendMessage(jid, {
+      audio: audioBuffer,
+      mimetype,
+      ptt: true,
+    });
+  }
+
+  /**
    * React to a message with an emoji.
    */
   async sendReaction(jid: string, messageId: string, participant: string, emoji: string, fromMe = false): Promise<void> {
