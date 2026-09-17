@@ -127,12 +127,13 @@ async function main(): Promise<void> {
             mentionJids = Array.from(participants.values());
           }
 
+          let msgId: string | null = null;
           if (groupJid) {
-            await whatsapp.connection.sendMessage(groupJid, message, mentionJids);
+            msgId = await whatsapp.connection.sendMessage(groupJid, message, mentionJids);
           } else {
-            await whatsapp.sendGroupNotification(message, mentionJids);
+            msgId = await whatsapp.sendGroupNotification(message, mentionJids);
           }
-          res.end(JSON.stringify({ status: 'sent', message, mentionedCount: mentionJids.length }));
+          res.end(JSON.stringify({ status: 'sent', id: msgId, message, mentionedCount: mentionJids.length }));
         } catch (err: any) {
           res.statusCode = 500;
           res.end(JSON.stringify({ error: err.message }));
@@ -236,6 +237,69 @@ async function main(): Promise<void> {
           res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
         } catch (err: any) {
           console.error('[bridge] send-document error:', err.message);
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.url === '/react' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { groupJid, messageId, participant, emoji, fromMe } = JSON.parse(body);
+          if (!groupJid || !messageId) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'groupJid and messageId required' }));
+            return;
+          }
+          await whatsapp.connection.sendReaction(groupJid, messageId, participant || '', emoji || '👁', !!fromMe);
+          res.end(JSON.stringify({ status: 'ok' }));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.url === '/typing' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { groupJid, composing } = JSON.parse(body);
+          if (!groupJid) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'groupJid required' }));
+            return;
+          }
+          await whatsapp.connection.sendTyping(groupJid, composing !== false);
+          res.end(JSON.stringify({ status: 'ok' }));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.url === '/edit' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: any) => body += chunk);
+      req.on('end', async () => {
+        try {
+          const { groupJid, messageId, text } = JSON.parse(body);
+          if (!groupJid || !messageId || !text) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: 'groupJid, messageId and text required' }));
+            return;
+          }
+          await whatsapp.connection.editMessage(groupJid, messageId, text);
+          res.end(JSON.stringify({ status: 'ok' }));
+        } catch (err: any) {
           res.statusCode = 500;
           res.end(JSON.stringify({ error: err.message }));
         }

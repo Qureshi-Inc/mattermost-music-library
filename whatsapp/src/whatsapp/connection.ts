@@ -156,23 +156,53 @@ export class WhatsAppConnection extends EventEmitter {
   }
 
   /**
+   * React to a message with an emoji.
+   */
+  async sendReaction(jid: string, messageId: string, participant: string, emoji: string, fromMe = false): Promise<void> {
+    if (!this.socket) return;
+    const key = { id: messageId, remoteJid: jid, fromMe, participant: participant || undefined };
+    await this.socket.sendMessage(jid, { react: { text: emoji, key } });
+  }
+
+  /**
+   * Edit a message we previously sent.
+   */
+  async editMessage(jid: string, messageId: string, newText: string): Promise<void> {
+    if (!this.socket) return;
+    await this.socket.sendMessage(jid, {
+      text: newText,
+      edit: { id: messageId, remoteJid: jid, fromMe: true },
+    });
+  }
+
+  /**
+   * Send composing/paused presence to a group.
+   */
+  async sendTyping(jid: string, composing: boolean): Promise<void> {
+    if (!this.socket) return;
+    await this.socket.sendPresenceUpdate(composing ? 'composing' : 'paused', jid);
+  }
+
+  /**
    * Send a text message to a JID.
    */
-  async sendMessage(jid: string, text: string, mentions?: string[]): Promise<void> {
+  async sendMessage(jid: string, text: string, mentions?: string[]): Promise<string | null> {
     if (!this.socket) {
       throw new Error('WhatsApp not connected');
     }
 
     try {
-      await this.socket.sendMessage(jid, {
+      const result = await this.socket.sendMessage(jid, {
         text,
         mentions: mentions && mentions.length > 0 ? mentions : undefined,
       });
+      return result?.key?.id ?? null;
     } catch (err: any) {
       // If mentions cause jidDecode failure, retry without mentions
       if (err?.message?.includes('jidDecode') || err?.message?.includes('destructure')) {
         console.warn('[whatsapp] Mention failed, sending without mentions:', err.message);
-        await this.socket.sendMessage(jid, { text });
+        const result = await this.socket.sendMessage(jid, { text });
+        return result?.key?.id ?? null;
       } else {
         throw err;
       }
