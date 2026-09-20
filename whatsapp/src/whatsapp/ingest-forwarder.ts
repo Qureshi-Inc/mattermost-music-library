@@ -3,7 +3,7 @@
  * psn-messenger WhatsApp analytics ingest endpoint.
  */
 
-import { WASocket, proto } from '@whiskeysockets/baileys';
+import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 
 export interface IngestConfig {
   url: string;
@@ -11,22 +11,33 @@ export interface IngestConfig {
   groupJids: string[];
 }
 
+const IMAGE_MAX_BYTES = 4 * 1024 * 1024; // 4 MB — keep ingest payloads manageable
+
 export class IngestForwarder {
   private config: IngestConfig;
+  private sock: WASocket | null = null;
 
   constructor(config: IngestConfig) {
     this.config = config;
   }
 
   attach(sock: WASocket): void {
+    this.sock = sock;
     if (!this.config.url || this.config.groupJids.length === 0) return;
 
     sock.ev.on('messages.upsert', ({ messages, type }) => {
-      if (type !== 'notify') return;
+      // 'notify' = incoming messages; 'append' = our own outgoing messages.
+      // We forward both so the app can learn our sent message IDs (for
+      // swipe-reply detection) and can see incoming images/text.
+      if (type !== 'notify' && type !== 'append') return;
 
       for (const msg of messages) {
         const jid = msg.key.remoteJid || '';
-        if (!this.config.groupJids.includes(jid)) continue;
+        const isGroup = jid.endsWith('@g.us');
+        if (isGroup && !this.config.groupJids.includes(jid)) continue;
+        if (!isGroup && !jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) continue;
+        // For outgoing ('append') events, only forward our own messages.
+        if (type === 'append' && !msg.key.fromMe) continue;
         this.forward(msg, jid).catch((err) => {
           console.warn('[ingest] forward failed:', err.message);
         });
@@ -69,6 +80,19 @@ export class IngestForwarder {
     } else if (content.imageMessage) {
       text = content.imageMessage.caption || null;
       msgType = 'image';
+      replyTo = content.imageMessage.contextInfo?.stanzaId || null;
+      if (this.sock) {
+        try {
+          const buf = await downloadMediaMessage(msg, 'buffer', {});
+          if (buf instanceof Buffer && buf.length <= IMAGE_MAX_BYTES) {
+            const payload = await this.buildPayload(msg, groupJid, text, msgType, replyTo ?? null, buf, 'image/jpeg');
+            await this.post(payload);
+            return;
+          }
+        } catch (e: any) {
+          console.warn('[ingest] image download failed, forwarding without bytes:', e.message);
+        }
+      }
     } else if (content.videoMessage) {
       text = content.videoMessage.caption || null;
       msgType = 'video';
@@ -83,7 +107,24 @@ export class IngestForwarder {
       return; // protocol noise, skip
     }
 
-    await this.post({
+    await this.post(this.buildPayload(msg, groupJid, text, msgType, replyTo ?? null));
+  }
+
+  private buildPayload(
+    msg: proto.IWebMessageInfo,
+    groupJid: string,
+    text: string | null,
+    msgType: string,
+    replyTo: string | null,
+    imageBuf?: Buffer,
+    imageType?: string,
+  ): object {
+    const msgId = msg.key.id || '';
+    const senderJid = msg.key.participant || msg.key.remoteJid || '';
+    const senderName = msg.pushName || senderJid.split('@')[0] || 'Unknown';
+    const rawTs = msg.messageTimestamp;
+    const ts = typeof rawTs === 'number' ? rawTs : rawTs ? Number(rawTs) : Math.floor(Date.now() / 1000);
+    const payload: Record<string, unknown> = {
       message_id: msgId,
       sender_jid: senderJid,
       sender_name: senderName,
@@ -93,7 +134,12 @@ export class IngestForwarder {
       message_type: msgType,
       from_me: msg.key.fromMe || false,
       reply_to: replyTo,
-    });
+    };
+    if (imageBuf) {
+      payload.image_b64 = imageBuf.toString('base64');
+      payload.image_type = imageType || 'image/jpeg';
+    }
+    return payload;
   }
 
   private async post(payload: object): Promise<void> {
