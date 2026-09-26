@@ -151,9 +151,9 @@ export class WhatsAppClient {
     videoBuffer: Buffer,
     caption?: string,
     groupJid?: string,
-  ): Promise<void> {
+  ): Promise<string | null> {
     const targetJid = groupJid || this.groupJid;
-    await this.connection.sendVideo(targetJid, videoBuffer, 'video/mp4', caption);
+    return this.connection.sendVideo(targetJid, videoBuffer, 'video/mp4', caption);
   }
 
   async sendImageBuffer(

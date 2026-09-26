@@ -161,9 +161,9 @@ async function main(): Promise<void> {
 
           if (videoBase64) {
             const buf = Buffer.from(videoBase64, 'base64');
-            await whatsapp.sendVideoBuffer(buf, caption, groupJid);
-            if (idempotencyKey) db.recordVideoSend(idempotencyKey, null);
-            res.end(JSON.stringify({ status: 'sent', bytes: buf.length }));
+            const msgId = await whatsapp.sendVideoBuffer(buf, caption, groupJid);
+            if (idempotencyKey) db.recordVideoSend(idempotencyKey, msgId ?? null);
+            res.end(JSON.stringify({ status: 'sent', bytes: buf.length, messageId: msgId ?? null }));
           } else if (videoUrl) {
             await whatsapp.sendVideoToGroup(videoUrl, caption, groupJid, authHeader);
             if (idempotencyKey) db.recordVideoSend(idempotencyKey, null);
