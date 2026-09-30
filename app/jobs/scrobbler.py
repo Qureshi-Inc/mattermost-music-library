@@ -368,8 +368,19 @@ class ScrobbleWatcher:
         Mattermost username. We look it up; if not found, store None so the
         pipeline still adds to the shared library.
         """
+        # Known friends first: the dashboard's id->name map is the source of truth
+        # for attribution, and it needs no API call (slaptastic's MM token gets
+        # 403 on the username lookup, which left every auto-add unattributed).
+        from app.api.dashboard import USER_DISPLAY_NAMES
+
+        wanted = source_name.strip().lower()
+        for uid, name in USER_DISPLAY_NAMES.items():
+            if name.lower() == wanted:
+                return uid
+
         settings = self._settings
         if not settings.mattermost_url or not settings.mattermost_token:
+            logger.warning("Scrobble source %r has no known Mattermost user; add is unattributed", source_name)
             return None
         session = await self._get_session()
         url = f"{settings.mattermost_url}/api/v4/users/username/{source_name}"
@@ -380,10 +391,15 @@ class ScrobbleWatcher:
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status != 200:
+                    logger.warning(
+                        "Mattermost lookup for scrobble source %r returned %s; add is unattributed",
+                        source_name, resp.status,
+                    )
                     return None
                 data = await resp.json()
                 return data.get("id")
-        except Exception:
+        except Exception as e:
+            logger.warning("Mattermost lookup for scrobble source %r failed: %s", source_name, e)
             return None
 
     async def _announce(self, source_name: str, artist: str, track: str, plays: int) -> None:
