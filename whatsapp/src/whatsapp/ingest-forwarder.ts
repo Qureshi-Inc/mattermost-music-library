@@ -3,7 +3,7 @@
  * psn-messenger WhatsApp analytics ingest endpoint.
  */
 
-import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
+import { WASocket, WAMessage, downloadMediaMessage } from '@whiskeysockets/baileys';
 
 export interface IngestConfig {
   url: string;
@@ -45,7 +45,7 @@ export class IngestForwarder {
     });
   }
 
-  private async forward(msg: proto.IWebMessageInfo, groupJid: string): Promise<void> {
+  private async forward(msg: WAMessage, groupJid: string): Promise<void> {
     const content = msg.message;
     if (!content) return;
 
@@ -111,7 +111,7 @@ export class IngestForwarder {
   }
 
   private buildPayload(
-    msg: proto.IWebMessageInfo,
+    msg: WAMessage,
     groupJid: string,
     text: string | null,
     msgType: string,

@@ -272,6 +272,8 @@ export class WhatsAppConnection extends EventEmitter {
       // JID can be number@s.whatsapp.net or number@lid
       const number = p.id.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '');
       participants.set(number, p.id);
+      // Baileys 7 lists members by @lid; keep finding them by phone number too.
+      if (p.phoneNumber) participants.set(p.phoneNumber.split('@')[0], p.id);
     }
 
     return participants;
