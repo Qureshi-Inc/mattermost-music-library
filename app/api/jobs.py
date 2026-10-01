@@ -81,6 +81,10 @@ class JobCreateRequest(BaseModel):
     """Request schema for creating a job manually."""
 
     url: str = Field(..., max_length=2048, description="Music URL to process")
+    requester_user_id: str | None = Field(
+        default=None, max_length=64, pattern=r"^[a-z0-9]+$",
+        description="Mattermost user id to credit (leaderboard, picks playlist)",
+    )
 
 
 class JobActionResponse(BaseModel):
@@ -255,6 +259,7 @@ async def create_job(
         url=validated_url,
         source_platform=platform,
         status=JobStatus.PENDING,
+        requester_user_id=request.requester_user_id,
     )
     db.add(job)
     await db.flush()

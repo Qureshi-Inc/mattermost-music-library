@@ -273,28 +273,7 @@ class JobPipeline:
                 logger.warning("Could not get Jellyfin admin user ID")
                 return
 
-            # Get or create the user's playlist
-            # Use the Mattermost username from the job's requester
-            from app.database import async_session_factory
-            from sqlalchemy import select, text
-            playlist_name = f"{job.requester_user_id}'s picks"
-
-            # Try to get the Mattermost username for a nicer playlist name
-            if self.mattermost:
-                try:
-                    from app.mattermost.client import MattermostClient
-                    if isinstance(self.mattermost, MattermostClient):
-                        if not self.mattermost._session:
-                            self.mattermost._session = __import__("aiohttp").ClientSession()
-                        url = f"{self.mattermost.api_url}/users/{job.requester_user_id}"
-                        async with self.mattermost._session.get(url, headers=self.mattermost._headers) as resp:
-                            if resp.status == 200:
-                                user_data = await resp.json()
-                                username = user_data.get("username", job.requester_user_id)
-                                playlist_name = f"{username}'s picks"
-                except Exception:
-                    pass
-
+            playlist_name = f"{await self._picks_name(job.requester_user_id)}'s picks"
             playlist_id = await self._jellyfin.get_or_create_playlist(playlist_name, admin_user_id)
             if not playlist_id:
                 logger.warning("Could not get/create playlist: %s", playlist_name)
@@ -308,6 +287,35 @@ class JobPipeline:
                 logger.warning("Failed to add to playlist '%s'", playlist_name)
         except Exception as e:
             logger.warning("Playlist addition failed (non-fatal): %s", e)
+
+    async def _picks_name(self, user_id: str | None) -> str:
+        """Whose picks a requester's songs go in.
+
+        Known friends keep the name their playlist has always had, even when their
+        Mattermost username changes later (themoosecompany is mutasif on Mattermost
+        now, and that started a second playlist). Anyone else gets their live
+        Mattermost username, then the raw id.
+        """
+        from app.api.dashboard import USER_DISPLAY_NAMES
+
+        if not user_id:
+            return "unknown"
+        if user_id in USER_DISPLAY_NAMES:
+            return USER_DISPLAY_NAMES[user_id]
+        if self.mattermost:
+            try:
+                from app.mattermost.client import MattermostClient
+                if isinstance(self.mattermost, MattermostClient):
+                    if not self.mattermost._session:
+                        self.mattermost._session = __import__("aiohttp").ClientSession()
+                    url = f"{self.mattermost.api_url}/users/{user_id}"
+                    async with self.mattermost._session.get(url, headers=self.mattermost._headers) as resp:
+                        if resp.status == 200:
+                            return (await resp.json()).get("username") or user_id
+                        logger.warning("Mattermost lookup for picks owner %s returned %s", user_id, resp.status)
+            except Exception as e:
+                logger.warning("Mattermost lookup for picks owner %s failed: %s", user_id, e)
+        return user_id
 
     async def _add_to_user_playlist_by_name(self, title: str, artist: str, user_id: str) -> None:
         """Add an existing song to a user's playlist by title/artist."""
@@ -323,23 +331,7 @@ class JobPipeline:
             if not admin_user_id:
                 return
 
-            # Get username from Mattermost
-            playlist_name = f"{user_id}'s picks"
-            if self.mattermost:
-                try:
-                    from app.mattermost.client import MattermostClient
-                    if isinstance(self.mattermost, MattermostClient):
-                        if not self.mattermost._session:
-                            self.mattermost._session = __import__("aiohttp").ClientSession()
-                        url = f"{self.mattermost.api_url}/users/{user_id}"
-                        async with self.mattermost._session.get(url, headers=self.mattermost._headers) as resp:
-                            if resp.status == 200:
-                                user_data = await resp.json()
-                                username = user_data.get("username", user_id)
-                                playlist_name = f"{username}'s picks"
-                except Exception:
-                    pass
-
+            playlist_name = f"{await self._picks_name(user_id)}'s picks"
             playlist_id = await self._jellyfin.get_or_create_playlist(playlist_name, admin_user_id)
             if playlist_id:
                 await self._jellyfin.add_to_playlist(playlist_id, item_id, admin_user_id)
