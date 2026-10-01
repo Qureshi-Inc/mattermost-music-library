@@ -86,7 +86,7 @@ class CandidateScorer:
         weighted_score = 0.0
 
         # Factor 1: Title similarity (fuzzy match)
-        title_score = self._score_title_similarity(candidate.title, expected)
+        title_score = self._score_title_similarity(candidate.title, expected, candidate.channel)
         weighted_score += title_score * w.title_similarity
 
         # Factor 2: Duration match
@@ -124,10 +124,20 @@ class CandidateScorer:
             candidate.score = self.score(candidate, expected)
         return sorted(candidates, key=lambda c: c.score, reverse=True)
 
-    def _score_title_similarity(self, candidate_title: str, expected: ExpectedMetadata) -> float:
+    @staticmethod
+    def _artist_names(artist: str) -> list[str]:
+        """Each credited artist on its own: "A, B & C feat. D" -> [a, b, c, d]."""
+        parts = re.split(r",|&|\bfeat\.?|\bft\.?|\bx\b|\band\b|/", artist.lower())
+        return [p.strip() for p in parts if len(p.strip()) >= 3]
+
+    def _score_title_similarity(
+        self, candidate_title: str, expected: ExpectedMetadata, channel: str = ""
+    ) -> float:
         """Score how similar the candidate title is to expected artist + title.
 
-        Uses SequenceMatcher for fuzzy string matching.
+        Uses SequenceMatcher for fuzzy string matching. A bare title match only
+        counts in full when one of the artists is named in the title or channel:
+        otherwise "Sahara" by somebody else, same length, beats the real one.
         """
         # Build expected string variants to compare against
         expected_full = f"{expected.artist} - {expected.title}".lower()
@@ -141,14 +151,17 @@ class CandidateScorer:
         title_ratio = SequenceMatcher(None, candidate_lower, expected_title_only).ratio()
 
         # Also check if both artist and title are substrings
-        artist_lower = expected.artist.lower()
-        contains_artist = artist_lower in candidate_lower
+        names = self._artist_names(expected.artist) or [expected.artist.lower()]
+        contains_artist = any(n in candidate_lower for n in names)
+        named = contains_artist or any(n in channel.lower() for n in names)
+        if not named:
+            title_ratio = min(title_ratio, 0.6)
         contains_title = expected_title_only in candidate_lower
         substring_score = 0.0
         if contains_artist and contains_title:
             substring_score = 0.95
         elif contains_title:
-            substring_score = 0.75
+            substring_score = 0.75 if named else 0.5
         elif contains_artist:
             substring_score = 0.4
 

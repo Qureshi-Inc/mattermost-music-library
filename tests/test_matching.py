@@ -358,3 +358,31 @@ class TestEdgeCases:
         )
         score = scorer.score(candidate, expected_bohemian)
         assert 0.0 <= score <= 1.0
+
+
+class TestArtistMustBeNamed:
+    """A same-name, same-length song by someone else must not win (the "Sahara" bug)."""
+
+    def test_the_artists_upload_beats_a_namesake(self):
+        from app.matching.scorer import CandidateInfo, CandidateScorer, ExpectedMetadata
+
+        expected = ExpectedMetadata(title="Sahara", artist="Hasan Raheem, Shamsher Rana, Varqa Faraid", duration_seconds=178)
+        namesake = CandidateInfo(url="https://youtu.be/a", title="Sahara", channel="RAY LEMA", duration=178, view_count=50_000)
+        real = CandidateInfo(url="https://youtu.be/b", title="Hasan Raheem - Sahara | Prod by Shamsher Rana & Varqa Faraid",
+                             channel="Hasan Raheem", duration=178, view_count=50_000)
+        ranked = CandidateScorer().score_candidates([namesake, real], expected)
+        assert ranked[0] is real
+
+    def test_artist_in_the_channel_still_counts(self):
+        from app.matching.scorer import CandidateInfo, CandidateScorer, ExpectedMetadata
+
+        expected = ExpectedMetadata(title="Sahara", artist="Hasan Raheem", duration_seconds=178)
+        s = CandidateScorer()
+        on_channel = CandidateInfo(url="u", title="Sahara", channel="Hasan Raheem - Topic", duration=178, view_count=None)
+        assert s._score_title_similarity(on_channel.title, expected, on_channel.channel) == 1.0
+        assert s._score_title_similarity("Sahara", expected, "Someone Else") <= 0.6
+
+    def test_artist_names_split(self):
+        from app.matching.scorer import CandidateScorer
+
+        assert CandidateScorer._artist_names("A1 Band, Bee & Cee feat. Dee") == ["a1 band", "bee", "cee", "dee"]
