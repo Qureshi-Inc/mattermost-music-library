@@ -16,7 +16,9 @@ import { Boom } from '@hapi/boom';
 import { EventEmitter } from 'events';
 import pino from 'pino';
 import { mkdirSync } from 'fs';
+import { dirname, join } from 'path';
 import { Config } from '../config';
+import { RetryCounter, SentMessageStore } from './sent-store';
 
 export interface WhatsAppConnectionEvents {
   ready: () => void;
@@ -29,11 +31,15 @@ export class WhatsAppConnection extends EventEmitter {
   private readonly config: Config['whatsapp'];
   private reconnecting = false;
   private logger: pino.Logger;
+  // Both outlive a reconnect: a retry receipt can arrive on the next socket.
+  private sent: SentMessageStore;
+  private retries = new RetryCounter();
 
   constructor(config: Config['whatsapp']) {
     super();
     this.config = config;
     this.logger = pino({ level: 'warn' });
+    this.sent = new SentMessageStore(join(dirname(config.authStatePath), 'sent-messages.db'));
   }
 
   get sock(): WASocket | null {
@@ -62,6 +68,20 @@ export class WhatsAppConnection extends EventEmitter {
       logger: this.logger,
       generateHighQualityLinkPreview: false,
       syncFullHistory: false,
+      // Answer "couldn't decrypt, send it again" receipts: without the original
+      // message the recipient is stuck on "Waiting for this message".
+      getMessage: async (key) => this.sent.get(key),
+      msgRetryCounterCache: this.retries,
+    });
+
+    this.socket.ev.on('messages.upsert', ({ messages }) => {
+      for (const m of messages) {
+        try {
+          this.sent.save(m);
+        } catch (err) {
+          console.warn('[whatsapp] Could not keep a sent message for retries:', err);
+        }
+      }
     });
 
     this.emit('socket', this.socket);
@@ -108,6 +128,7 @@ export class WhatsAppConnection extends EventEmitter {
 
       if (connection === 'open') {
         console.log('[whatsapp] Connected successfully');
+        this.sent.prune();
         this.emit('ready');
       }
     });
