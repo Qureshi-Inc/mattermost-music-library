@@ -38,7 +38,7 @@ export class WhatsAppConnection extends EventEmitter {
   constructor(config: Config['whatsapp']) {
     super();
     this.config = config;
-    this.logger = pino({ level: 'warn' });
+    this.logger = pino({ level: process.env.WA_LOG_LEVEL || 'warn' });
     this.sent = new SentMessageStore(join(dirname(config.authStatePath), 'sent-messages.db'));
   }
 
@@ -70,8 +70,20 @@ export class WhatsAppConnection extends EventEmitter {
       syncFullHistory: false,
       // Answer "couldn't decrypt, send it again" receipts: without the original
       // message the recipient is stuck on "Waiting for this message".
-      getMessage: async (key) => this.sent.get(key),
+      getMessage: async (key) => {
+        const msg = this.sent.get(key);
+        console.log(`[whatsapp] Retry asked for ${key.id}: ${msg ? 'sending it again' : 'not one we kept'}`);
+        return msg;
+      },
       msgRetryCounterCache: this.retries,
+    });
+
+    // Delivery trouble shows up here first: a retry receipt means the recipient couldn't decrypt.
+    this.socket.ws.on('CB:receipt', (node: any) => {
+      const t = node?.attrs?.type;
+      if (t === 'retry' || t === 'error') {
+        console.log(`[whatsapp] ${t} receipt for ${node.attrs.id} from device ${String(node.attrs.from || '').split('@')[0].split(':')[1] ?? '0'}`);
+      }
     });
 
     this.socket.ev.on('messages.upsert', ({ messages }) => {
