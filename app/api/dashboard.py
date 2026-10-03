@@ -49,11 +49,45 @@ USER_COLORS: dict[str, str] = {
 }
 
 
+# Anyone not in USER_DISPLAY_NAMES (everyone who joined after it was written): their
+# live Mattermost username, looked up once and remembered. Before this they showed as
+# the first 8 characters of their user id (Nooni was "1jecpeo3").
+_MM_NAMES: dict[str, tuple[str, float]] = {}
+_MM_NAME_TTL_S = 6 * 3600
+_MM_MISS_TTL_S = 600
+
+
+def _mattermost_username(user_id: str) -> str | None:
+    import time
+
+    import httpx
+
+    from app.config import get_settings
+
+    hit = _MM_NAMES.get(user_id)
+    if hit and time.time() < hit[1]:
+        return hit[0] or None
+    settings = get_settings()
+    name = ""
+    if settings.mattermost_token:
+        try:
+            r = httpx.get(f"{settings.mattermost_url.rstrip('/')}/api/v4/users/{user_id}",
+                          headers={"Authorization": f"Bearer {settings.mattermost_token}"}, timeout=3.0)
+            if r.status_code == 200:
+                name = (r.json().get("username") or "").strip()
+        except (httpx.HTTPError, ValueError):
+            name = ""
+    _MM_NAMES[user_id] = (name, time.time() + (_MM_NAME_TTL_S if name else _MM_MISS_TTL_S))
+    return name or None
+
+
 def _get_display_name(user_id: str | None) -> str:
     """Convert a Mattermost user ID to a display name."""
     if user_id is None:
         return "unknown"
-    return USER_DISPLAY_NAMES.get(user_id, user_id[:8])
+    if user_id in USER_DISPLAY_NAMES:
+        return USER_DISPLAY_NAMES[user_id]
+    return _mattermost_username(user_id) or user_id[:8]
 
 
 # --- Response Models ---
