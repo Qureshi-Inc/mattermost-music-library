@@ -90,6 +90,23 @@ def _get_display_name(user_id: str | None) -> str:
     return _mattermost_username(user_id) or user_id[:8]
 
 
+async def _user_id_for(db, name: str) -> str | None:
+    """A username back to its Mattermost user id: the fixed map, then everyone who has
+    added a song (people who joined later are only named through Mattermost, so a
+    lookup in the fixed map alone found nobody, and their stats compared as zero)."""
+    import asyncio
+
+    for uid, n in USER_DISPLAY_NAMES.items():
+        if n == name:
+            return uid
+    r = await db.execute(select(Job.requester_user_id).where(Job.requester_user_id.isnot(None)).distinct())
+    for (uid,) in r.all():
+        if uid and uid not in USER_DISPLAY_NAMES and uid not in BOT_USER_IDS \
+                and await asyncio.to_thread(_get_display_name, uid) == name:
+            return uid
+    return None
+
+
 # --- Response Models ---
 
 
@@ -616,11 +633,7 @@ async def get_artists(
 async def get_user_profile(username: str, db: DbSession) -> UserProfileResponse:
     """Get detailed profile for a specific user."""
     # Reverse lookup: username -> user_id
-    user_id = None
-    for uid, name in USER_DISPLAY_NAMES.items():
-        if name == username:
-            user_id = uid
-            break
+    user_id = await _user_id_for(db, username)
 
     if user_id is None:
         # Return empty profile
@@ -1140,13 +1153,8 @@ async def get_personalities(db: DbSession) -> PersonalitiesResponse:
 async def get_head_to_head(user1: str, user2: str, db: DbSession) -> HeadToHeadResponse:
     """Compare two users head to head."""
     # Get user IDs
-    uid1 = None
-    uid2 = None
-    for uid, name in USER_DISPLAY_NAMES.items():
-        if name == user1:
-            uid1 = uid
-        if name == user2:
-            uid2 = uid
+    uid1 = await _user_id_for(db, user1)
+    uid2 = await _user_id_for(db, user2)
 
     async def get_user_data(user_id: str | None):
         if user_id is None:
@@ -1289,13 +1297,8 @@ async def get_taste_dna(user1: str, user2: str, db: DbSession) -> TasteDNARespon
         return cached
 
     # Get user IDs
-    uid1 = None
-    uid2 = None
-    for uid, name in USER_DISPLAY_NAMES.items():
-        if name == user1:
-            uid1 = uid
-        if name == user2:
-            uid2 = uid
+    uid1 = await _user_id_for(db, user1)
+    uid2 = await _user_id_for(db, user2)
 
     if not uid1 or not uid2:
         return TasteDNAResponse(
@@ -1434,11 +1437,7 @@ async def get_ai_recommendations(username: str, db: DbSession) -> AIRecommendati
     import asyncio
     import re
 
-    user_id = None
-    for uid, name in USER_DISPLAY_NAMES.items():
-        if name == username:
-            user_id = uid
-            break
+    user_id = await _user_id_for(db, username)
 
     if not user_id:
         return AIRecommendationsResponse(username=username, recommendations=[], reasoning="User not found.")
@@ -1572,11 +1571,7 @@ async def get_ai_playlist_name(username: str, db: DbSession) -> AIPlaylistNameRe
     import asyncio
     import re
 
-    user_id = None
-    for uid, name in USER_DISPLAY_NAMES.items():
-        if name == username:
-            user_id = uid
-            break
+    user_id = await _user_id_for(db, username)
 
     if not user_id:
         return AIPlaylistNameResponse(username=username, current_name=f"{username}'s picks", ai_name=f"{username}'s picks", tagline="")
