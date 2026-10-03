@@ -97,96 +97,133 @@ async def _get_spotify_token() -> str | None:
             return _spotify_token
 
 
-async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
-    """Fetch all tracks from a Spotify playlist."""
-    token = await _get_spotify_token()
-    if not token:
-        return None
+async def _get_spotify_web_token() -> str | None:
+    """Get an anonymous Spotify web-player token.
 
+    Spotify's client_credentials grant stopped returning playlist tracks for
+    public playlists in 2024. The web-player endpoint issues anonymous tokens
+    that can still read all public content via the regular API.
+    """
     async with aiohttp.ClientSession() as session:
-        # Get playlist info — include market so Spotify returns available tracks
         async with session.get(
-            f"https://api.spotify.com/v1/playlists/{playlist_id}",
-            headers={"Authorization": f"Bearer {token}"},
-            params={"market": "US"},
+            "https://open.spotify.com/get_access_token",
+            params={"reason": "transport", "productType": "web_player"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json",
+                "Referer": "https://open.spotify.com/",
+            },
+            timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
             if resp.status != 200:
-                logger.warning("Spotify playlist API returned %d, trying embed fallback", resp.status)
-                return await _spotify_embed_fallback(playlist_id, token)
+                logger.warning("Spotify web token request failed: %d", resp.status)
+                return None
             data = await resp.json()
+            token = data.get("accessToken")
+            if token:
+                logger.info(
+                    "Got Spotify web-player token (anonymous=%s)", data.get("isAnonymous", True)
+                )
+            return token
 
-    name = data.get("name", "Unknown Playlist")
-    owner = data.get("owner", {}).get("display_name")
-    tracks_data = data.get("tracks", {})
-    total = tracks_data.get("total", 0)
-    logger.info(
-        "Spotify playlist API: '%s' total=%d items_in_first_page=%d next=%s",
-        name, total, len(tracks_data.get("items", [])), bool(tracks_data.get("next")),
-    )
 
+async def _fetch_all_playlist_tracks(playlist_id: str, token: str) -> list[PlaylistTrack]:
+    """Paginate through /v1/playlists/{id}/tracks and return every track."""
     tracks: list[PlaylistTrack] = []
-    for item in tracks_data.get("items", []):
-        track = item.get("track")
-        if not track or track.get("is_local"):
-            continue
+    url: str | None = (
+        f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+    )
+    params: dict = {"market": "US", "limit": 100}
 
-        artists = ", ".join(a["name"] for a in track.get("artists", []) if a.get("name"))
-        album_obj = track.get("album", {})
-        duration_ms = track.get("duration_ms")
-        isrc = track.get("external_ids", {}).get("isrc")
-        artwork = album_obj.get("images", [{}])[0].get("url") if album_obj.get("images") else None
-
-        tracks.append(PlaylistTrack(
-            title=track.get("name", "Unknown"),
-            artist=artists or "Unknown",
-            album=album_obj.get("name"),
-            duration_seconds=duration_ms / 1000.0 if duration_ms else None,
-            isrc=isrc,
-            spotify_id=track.get("id"),
-            artwork_url=artwork,
-        ))
-
-    # Handle pagination if more than 100 tracks
-    next_url = tracks_data.get("next")
-    while next_url:
-        async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession() as session:
+        while url:
             async with session.get(
-                next_url,
+                url,
                 headers={"Authorization": f"Bearer {token}"},
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 if resp.status != 200:
+                    logger.warning("Spotify /tracks page returned %d", resp.status)
                     break
                 page = await resp.json()
 
-        for item in page.get("items", []):
-            track = item.get("track")
-            if not track or track.get("is_local"):
-                continue
-            artists = ", ".join(a["name"] for a in track.get("artists", []) if a.get("name"))
-            album_obj = track.get("album", {})
-            duration_ms = track.get("duration_ms")
-            isrc = track.get("external_ids", {}).get("isrc")
-            artwork = album_obj.get("images", [{}])[0].get("url") if album_obj.get("images") else None
-            tracks.append(PlaylistTrack(
-                title=track.get("name", "Unknown"),
-                artist=artists or "Unknown",
-                album=album_obj.get("name"),
-                duration_seconds=duration_ms / 1000.0 if duration_ms else None,
-                isrc=isrc,
-                spotify_id=track.get("id"),
-                artwork_url=artwork,
-            ))
-        next_url = page.get("next")
+            for item in page.get("items", []):
+                track = item.get("track")
+                if not track or track.get("is_local"):
+                    continue
+                artists = ", ".join(a["name"] for a in track.get("artists", []) if a.get("name"))
+                album_obj = track.get("album", {})
+                duration_ms = track.get("duration_ms")
+                isrc = track.get("external_ids", {}).get("isrc")
+                artwork = (
+                    album_obj.get("images", [{}])[0].get("url")
+                    if album_obj.get("images")
+                    else None
+                )
+                tracks.append(PlaylistTrack(
+                    title=track.get("name", "Unknown"),
+                    artist=artists or "Unknown",
+                    album=album_obj.get("name"),
+                    duration_seconds=duration_ms / 1000.0 if duration_ms else None,
+                    isrc=isrc,
+                    spotify_id=track.get("id"),
+                    artwork_url=artwork,
+                ))
 
-    # If API returned name but no tracks, try embed fallback
-    if not tracks:
-        logger.warning("Spotify API returned 0 tracks for '%s', trying embed fallback", name)
-        fallback = await _spotify_embed_fallback(playlist_id, token)
-        if fallback and fallback.tracks:
-            return fallback
+            url = page.get("next")
+            params = {}  # next URL already carries all query params
 
-    logger.info("Resolved Spotify playlist: %s (%d tracks)", name, len(tracks))
-    return PlaylistInfo(name=name, owner=owner, track_count=total, tracks=tracks, platform="spotify")
+    return tracks
+
+
+async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
+    """Fetch all tracks from a Spotify playlist."""
+    token = await _get_spotify_token()
+
+    # Fetch playlist metadata (name, owner) — tracks may be empty with client_credentials
+    name = "Unknown Playlist"
+    owner: str | None = None
+    if token:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.spotify.com/v1/playlists/{playlist_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"market": "US", "fields": "name,owner,tracks.total"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    meta = await resp.json()
+                    name = meta.get("name", name)
+                    owner = meta.get("owner", {}).get("display_name")
+                    declared_total = meta.get("tracks", {}).get("total", 0)
+                    logger.info(
+                        "Spotify playlist metadata: '%s' declared_total=%d", name, declared_total
+                    )
+
+    # Try fetching tracks — first with client_credentials, then anonymous web token
+    tracks: list[PlaylistTrack] = []
+    for attempt_token in filter(None, [token, await _get_spotify_web_token()]):
+        tracks = await _fetch_all_playlist_tracks(playlist_id, attempt_token)
+        if tracks:
+            logger.info(
+                "Resolved Spotify playlist '%s' via API: %d tracks", name, len(tracks)
+            )
+            return PlaylistInfo(
+                name=name, owner=owner, track_count=len(tracks), tracks=tracks, platform="spotify"
+            )
+        logger.warning("Spotify API returned 0 tracks for '%s' with this token, trying next", name)
+
+    # Final fallback: scrape embed page (~30 tracks visible in static HTML)
+    logger.warning("All API attempts failed for '%s', falling back to embed scrape", name)
+    fallback = await _spotify_embed_fallback(playlist_id, token or "")
+    if fallback:
+        fallback.name = name or fallback.name
+    return fallback
 
 
 async def _spotify_embed_fallback(playlist_id: str, token: str) -> PlaylistInfo | None:
