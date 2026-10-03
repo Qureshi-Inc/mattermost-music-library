@@ -463,12 +463,21 @@ class MattermostClient:
             command_args=command_args,
         )
 
-        # Dispatch to registered callbacks — playlists take priority
+        # Dispatch to registered callbacks — playlists take priority.
+        # Run as a background task so the WebSocket receive loop is not blocked
+        # during the ~10–30 minute playlist import.
         if playlist_urls and self._on_playlist:
-            try:
-                await self._on_playlist(incoming)
-            except Exception:
-                logger.exception("Error in playlist callback")
+            import asyncio as _asyncio
+
+            _cb = self._on_playlist
+
+            async def _playlist_task(msg: IncomingMessage = incoming) -> None:
+                try:
+                    await _cb(msg)
+                except Exception:
+                    logger.exception("Error in playlist callback")
+
+            _asyncio.create_task(_playlist_task())
             return  # Don't also process individual track URLs from the same message
 
         if music_urls and self._on_music_link:

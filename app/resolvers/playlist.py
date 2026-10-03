@@ -104,10 +104,11 @@ async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
         return None
 
     async with aiohttp.ClientSession() as session:
-        # Get playlist info
+        # Get playlist info — include market so Spotify returns available tracks
         async with session.get(
             f"https://api.spotify.com/v1/playlists/{playlist_id}",
             headers={"Authorization": f"Bearer {token}"},
+            params={"market": "US"},
         ) as resp:
             if resp.status != 200:
                 logger.warning("Spotify playlist API returned %d, trying embed fallback", resp.status)
@@ -118,6 +119,10 @@ async def _resolve_spotify_playlist(playlist_id: str) -> PlaylistInfo | None:
     owner = data.get("owner", {}).get("display_name")
     tracks_data = data.get("tracks", {})
     total = tracks_data.get("total", 0)
+    logger.info(
+        "Spotify playlist API: '%s' total=%d items_in_first_page=%d next=%s",
+        name, total, len(tracks_data.get("items", [])), bool(tracks_data.get("next")),
+    )
 
     tracks: list[PlaylistTrack] = []
     for item in tracks_data.get("items", []):

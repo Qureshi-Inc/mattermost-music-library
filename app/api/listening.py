@@ -275,7 +275,8 @@ async def get_now_listening(db: DbSession) -> NowListeningResponse:
         if ev.username in seen_users:
             continue
         seen_users.add(ev.username)
-        age = (datetime.now(timezone.utc) - ev.created_at).total_seconds()
+        created_at_utc = ev.created_at.replace(tzinfo=timezone.utc) if ev.created_at.tzinfo is None else ev.created_at
+        age = (datetime.now(timezone.utc) - created_at_utc).total_seconds()
         listeners.append(NowListeningEntry(
             username=ev.username,
             track_id=ev.track_id,
